@@ -1,0 +1,17 @@
+.gradle/
+build/
+local.properties
+.DS_Store
+.kotlin/
+*.iml
+.idea/
+functions/node_modules/
+functions/lib/
+e2e/node_modules/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+pubsub-debug.log
+.firebase/
+iosApp/build/
+xcuserdata/

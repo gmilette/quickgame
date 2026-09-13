@@ -1,0 +1,397 @@
+{
+    "game": "tictactoe",
+    "engineVersion": 1,
+    "initialStates": [
+        {
+            "name": "standard-initial",
+            "configJson": "{}",
+            "players": [
+                {
+                    "uid": "uid-x",
+                    "displayName": "Player X",
+                    "playerIndex": 0
+                },
+                {
+                    "uid": "uid-o",
+                    "displayName": "Player O",
+                    "playerIndex": 1
+                }
+            ],
+            "seed": 7,
+            "expectedStateJson": "{\"cells\":[\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"X\",\"winnerMark\":null,\"line\":null,\"moveCount\":0}",
+            "expectedActivePlayer": "uid-x"
+        }
+    ],
+    "vectors": [
+        {
+            "name": "x-wins-move-0",
+            "stateJson": "{\"cells\":[\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"X\",\"winnerMark\":null,\"line\":null,\"moveCount\":0}",
+            "submissionJson": "{\"cell\":0}",
+            "playerId": "uid-x",
+            "seed": 0,
+            "configJson": "{}",
+            "expected": {
+                "valid": true,
+                "stateJson": "{\"cells\":[\"X\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"O\",\"winnerMark\":null,\"line\":null,\"moveCount\":1}",
+                "logJson": null,
+                "status": "active",
+                "winnerUid": null
+            }
+        },
+        {
+            "name": "x-wins-move-1",
+            "stateJson": "{\"cells\":[\"X\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"O\",\"winnerMark\":null,\"line\":null,\"moveCount\":1}",
+            "submissionJson": "{\"cell\":3}",
+            "playerId": "uid-o",
+            "seed": 1,
+            "configJson": "{}",
+            "expected": {
+                "valid": true,
+                "stateJson": "{\"cells\":[\"X\",\"\",\"\",\"O\",\"\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"X\",\"winnerMark\":null,\"line\":null,\"moveCount\":2}",
+                "logJson": null,
+                "status": "active",
+                "winnerUid": null
+            }
+        },
+        {
+            "name": "x-wins-move-2",
+            "stateJson": "{\"cells\":[\"X\",\"\",\"\",\"O\",\"\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"X\",\"winnerMark\":null,\"line\":null,\"moveCount\":2}",
+            "submissionJson": "{\"cell\":1}",
+            "playerId": "uid-x",
+            "seed": 2,
+            "configJson": "{}",
+            "expected": {
+                "valid": true,
+                "stateJson": "{\"cells\":[\"X\",\"X\",\"\",\"O\",\"\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"O\",\"winnerMark\":null,\"line\":null,\"moveCount\":3}",
+                "logJson": null,
+                "status": "active",
+                "winnerUid": null
+            }
+        },
+        {
+            "name": "x-wins-move-3",
+            "stateJson": "{\"cells\":[\"X\",\"X\",\"\",\"O\",\"\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"O\",\"winnerMark\":null,\"line\":null,\"moveCount\":3}",
+            "submissionJson": "{\"cell\":4}",
+            "playerId": "uid-o",
+            "seed": 3,
+            "configJson": "{}",
+            "expected": {
+                "valid": true,
+                "stateJson": "{\"cells\":[\"X\",\"X\",\"\",\"O\",\"O\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"X\",\"winnerMark\":null,\"line\":null,\"moveCount\":4}",
+                "logJson": null,
+                "status": "active",
+                "winnerUid": null
+            }
+        },
+        {
+            "name": "x-wins-move-4",
+            "stateJson": "{\"cells\":[\"X\",\"X\",\"\",\"O\",\"O\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"X\",\"winnerMark\":null,\"line\":null,\"moveCount\":4}",
+            "submissionJson": "{\"cell\":2}",
+            "playerId": "uid-x",
+            "seed": 4,
+            "configJson": "{}",
+            "expected": {
+                "valid": true,
+                "stateJson": "{\"cells\":[\"X\",\"X\",\"X\",\"O\",\"O\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"O\",\"winnerMark\":\"X\",\"line\":[0,1,2],\"moveCount\":5}",
+                "logJson": null,
+                "status": "complete",
+                "winnerUid": "uid-x"
+            }
+        },
+        {
+            "name": "draw-move-0",
+            "stateJson": "{\"cells\":[\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"X\",\"winnerMark\":null,\"line\":null,\"moveCount\":0}",
+            "submissionJson": "{\"cell\":0}",
+            "playerId": "uid-x",
+            "seed": 100,
+            "configJson": "{}",
+            "expected": {
+                "valid": true,
+                "stateJson": "{\"cells\":[\"X\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"O\",\"winnerMark\":null,\"line\":null,\"moveCount\":1}",
+                "logJson": null,
+                "status": "active",
+                "winnerUid": null
+            }
+        },
+        {
+            "name": "draw-move-1",
+            "stateJson": "{\"cells\":[\"X\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"O\",\"winnerMark\":null,\"line\":null,\"moveCount\":1}",
+            "submissionJson": "{\"cell\":4}",
+            "playerId": "uid-o",
+            "seed": 101,
+            "configJson": "{}",
+            "expected": {
+                "valid": true,
+                "stateJson": "{\"cells\":[\"X\",\"\",\"\",\"\",\"O\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"X\",\"winnerMark\":null,\"line\":null,\"moveCount\":2}",
+                "logJson": null,
+                "status": "active",
+                "winnerUid": null
+            }
+        },
+        {
+            "name": "draw-move-2",
+            "stateJson": "{\"cells\":[\"X\",\"\",\"\",\"\",\"O\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"X\",\"winnerMark\":null,\"line\":null,\"moveCount\":2}",
+            "submissionJson": "{\"cell\":8}",
+            "playerId": "uid-x",
+            "seed": 102,
+            "configJson": "{}",
+            "expected": {
+                "valid": true,
+                "stateJson": "{\"cells\":[\"X\",\"\",\"\",\"\",\"O\",\"\",\"\",\"\",\"X\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"O\",\"winnerMark\":null,\"line\":null,\"moveCount\":3}",
+                "logJson": null,
+                "status": "active",
+                "winnerUid": null
+            }
+        },
+        {
+            "name": "draw-move-3",
+            "stateJson": "{\"cells\":[\"X\",\"\",\"\",\"\",\"O\",\"\",\"\",\"\",\"X\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"O\",\"winnerMark\":null,\"line\":null,\"moveCount\":3}",
+            "submissionJson": "{\"cell\":1}",
+            "playerId": "uid-o",
+            "seed": 103,
+            "configJson": "{}",
+            "expected": {
+                "valid": true,
+                "stateJson": "{\"cells\":[\"X\",\"O\",\"\",\"\",\"O\",\"\",\"\",\"\",\"X\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"X\",\"winnerMark\":null,\"line\":null,\"moveCount\":4}",
+                "logJson": null,
+                "status": "active",
+                "winnerUid": null
+            }
+        },
+        {
+            "name": "draw-move-4",
+            "stateJson": "{\"cells\":[\"X\",\"O\",\"\",\"\",\"O\",\"\",\"\",\"\",\"X\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"X\",\"winnerMark\":null,\"line\":null,\"moveCount\":4}",
+            "submissionJson": "{\"cell\":7}",
+            "playerId": "uid-x",
+            "seed": 104,
+            "configJson": "{}",
+            "expected": {
+                "valid": true,
+                "stateJson": "{\"cells\":[\"X\",\"O\",\"\",\"\",\"O\",\"\",\"\",\"X\",\"X\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"O\",\"winnerMark\":null,\"line\":null,\"moveCount\":5}",
+                "logJson": null,
+                "status": "active",
+                "winnerUid": null
+            }
+        },
+        {
+            "name": "draw-move-5",
+            "stateJson": "{\"cells\":[\"X\",\"O\",\"\",\"\",\"O\",\"\",\"\",\"X\",\"X\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"O\",\"winnerMark\":null,\"line\":null,\"moveCount\":5}",
+            "submissionJson": "{\"cell\":6}",
+            "playerId": "uid-o",
+            "seed": 105,
+            "configJson": "{}",
+            "expected": {
+                "valid": true,
+                "stateJson": "{\"cells\":[\"X\",\"O\",\"\",\"\",\"O\",\"\",\"O\",\"X\",\"X\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"X\",\"winnerMark\":null,\"line\":null,\"moveCount\":6}",
+                "logJson": null,
+                "status": "active",
+                "winnerUid": null
+            }
+        },
+        {
+            "name": "draw-move-6",
+            "stateJson": "{\"cells\":[\"X\",\"O\",\"\",\"\",\"O\",\"\",\"O\",\"X\",\"X\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"X\",\"winnerMark\":null,\"line\":null,\"moveCount\":6}",
+            "submissionJson": "{\"cell\":2}",
+            "playerId": "uid-x",
+            "seed": 106,
+            "configJson": "{}",
+            "expected": {
+                "valid": true,
+                "stateJson": "{\"cells\":[\"X\",\"O\",\"X\",\"\",\"O\",\"\",\"O\",\"X\",\"X\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"O\",\"winnerMark\":null,\"line\":null,\"moveCount\":7}",
+                "logJson": null,
+                "status": "active",
+                "winnerUid": null
+            }
+        },
+        {
+            "name": "draw-move-7",
+            "stateJson": "{\"cells\":[\"X\",\"O\",\"X\",\"\",\"O\",\"\",\"O\",\"X\",\"X\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"O\",\"winnerMark\":null,\"line\":null,\"moveCount\":7}",
+            "submissionJson": "{\"cell\":5}",
+            "playerId": "uid-o",
+            "seed": 107,
+            "configJson": "{}",
+            "expected": {
+                "valid": true,
+                "stateJson": "{\"cells\":[\"X\",\"O\",\"X\",\"\",\"O\",\"O\",\"O\",\"X\",\"X\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"X\",\"winnerMark\":null,\"line\":null,\"moveCount\":8}",
+                "logJson": null,
+                "status": "active",
+                "winnerUid": null
+            }
+        },
+        {
+            "name": "draw-move-8",
+            "stateJson": "{\"cells\":[\"X\",\"O\",\"X\",\"\",\"O\",\"O\",\"O\",\"X\",\"X\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"X\",\"winnerMark\":null,\"line\":null,\"moveCount\":8}",
+            "submissionJson": "{\"cell\":3}",
+            "playerId": "uid-x",
+            "seed": 108,
+            "configJson": "{}",
+            "expected": {
+                "valid": true,
+                "stateJson": "{\"cells\":[\"X\",\"O\",\"X\",\"X\",\"O\",\"O\",\"O\",\"X\",\"X\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"O\",\"winnerMark\":null,\"line\":null,\"moveCount\":9}",
+                "logJson": null,
+                "status": "complete",
+                "winnerUid": null
+            }
+        },
+        {
+            "name": "o-wins-move-0",
+            "stateJson": "{\"cells\":[\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"X\",\"winnerMark\":null,\"line\":null,\"moveCount\":0}",
+            "submissionJson": "{\"cell\":1}",
+            "playerId": "uid-x",
+            "seed": 200,
+            "configJson": "{}",
+            "expected": {
+                "valid": true,
+                "stateJson": "{\"cells\":[\"\",\"X\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"O\",\"winnerMark\":null,\"line\":null,\"moveCount\":1}",
+                "logJson": null,
+                "status": "active",
+                "winnerUid": null
+            }
+        },
+        {
+            "name": "o-wins-move-1",
+            "stateJson": "{\"cells\":[\"\",\"X\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"O\",\"winnerMark\":null,\"line\":null,\"moveCount\":1}",
+            "submissionJson": "{\"cell\":0}",
+            "playerId": "uid-o",
+            "seed": 201,
+            "configJson": "{}",
+            "expected": {
+                "valid": true,
+                "stateJson": "{\"cells\":[\"O\",\"X\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"X\",\"winnerMark\":null,\"line\":null,\"moveCount\":2}",
+                "logJson": null,
+                "status": "active",
+                "winnerUid": null
+            }
+        },
+        {
+            "name": "o-wins-move-2",
+            "stateJson": "{\"cells\":[\"O\",\"X\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"X\",\"winnerMark\":null,\"line\":null,\"moveCount\":2}",
+            "submissionJson": "{\"cell\":2}",
+            "playerId": "uid-x",
+            "seed": 202,
+            "configJson": "{}",
+            "expected": {
+                "valid": true,
+                "stateJson": "{\"cells\":[\"O\",\"X\",\"X\",\"\",\"\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"O\",\"winnerMark\":null,\"line\":null,\"moveCount\":3}",
+                "logJson": null,
+                "status": "active",
+                "winnerUid": null
+            }
+        },
+        {
+            "name": "o-wins-move-3",
+            "stateJson": "{\"cells\":[\"O\",\"X\",\"X\",\"\",\"\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"O\",\"winnerMark\":null,\"line\":null,\"moveCount\":3}",
+            "submissionJson": "{\"cell\":4}",
+            "playerId": "uid-o",
+            "seed": 203,
+            "configJson": "{}",
+            "expected": {
+                "valid": true,
+                "stateJson": "{\"cells\":[\"O\",\"X\",\"X\",\"\",\"O\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"X\",\"winnerMark\":null,\"line\":null,\"moveCount\":4}",
+                "logJson": null,
+                "status": "active",
+                "winnerUid": null
+            }
+        },
+        {
+            "name": "o-wins-move-4",
+            "stateJson": "{\"cells\":[\"O\",\"X\",\"X\",\"\",\"O\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"X\",\"winnerMark\":null,\"line\":null,\"moveCount\":4}",
+            "submissionJson": "{\"cell\":5}",
+            "playerId": "uid-x",
+            "seed": 204,
+            "configJson": "{}",
+            "expected": {
+                "valid": true,
+                "stateJson": "{\"cells\":[\"O\",\"X\",\"X\",\"\",\"O\",\"X\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"O\",\"winnerMark\":null,\"line\":null,\"moveCount\":5}",
+                "logJson": null,
+                "status": "active",
+                "winnerUid": null
+            }
+        },
+        {
+            "name": "o-wins-move-5",
+            "stateJson": "{\"cells\":[\"O\",\"X\",\"X\",\"\",\"O\",\"X\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"O\",\"winnerMark\":null,\"line\":null,\"moveCount\":5}",
+            "submissionJson": "{\"cell\":8}",
+            "playerId": "uid-o",
+            "seed": 205,
+            "configJson": "{}",
+            "expected": {
+                "valid": true,
+                "stateJson": "{\"cells\":[\"O\",\"X\",\"X\",\"\",\"O\",\"X\",\"\",\"\",\"O\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"X\",\"winnerMark\":\"O\",\"line\":[0,4,8],\"moveCount\":6}",
+                "logJson": null,
+                "status": "complete",
+                "winnerUid": "uid-o"
+            }
+        },
+        {
+            "name": "reject-not-active-player",
+            "stateJson": "{\"cells\":[\"\",\"\",\"\",\"\",\"X\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"O\",\"winnerMark\":null,\"line\":null,\"moveCount\":1}",
+            "submissionJson": "{\"cell\":0}",
+            "playerId": "uid-x",
+            "seed": 0,
+            "configJson": "{}",
+            "expected": {
+                "valid": false,
+                "errors": [
+                    "notActivePlayer"
+                ]
+            }
+        },
+        {
+            "name": "reject-occupied",
+            "stateJson": "{\"cells\":[\"\",\"\",\"\",\"\",\"X\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"O\",\"winnerMark\":null,\"line\":null,\"moveCount\":1}",
+            "submissionJson": "{\"cell\":4}",
+            "playerId": "uid-o",
+            "seed": 0,
+            "configJson": "{}",
+            "expected": {
+                "valid": false,
+                "errors": [
+                    "cellOccupied"
+                ]
+            }
+        },
+        {
+            "name": "reject-out-of-range",
+            "stateJson": "{\"cells\":[\"\",\"\",\"\",\"\",\"X\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"O\",\"winnerMark\":null,\"line\":null,\"moveCount\":1}",
+            "submissionJson": "{\"cell\":9}",
+            "playerId": "uid-o",
+            "seed": 0,
+            "configJson": "{}",
+            "expected": {
+                "valid": false,
+                "errors": [
+                    "cellOutOfRange"
+                ]
+            }
+        },
+        {
+            "name": "reject-negative",
+            "stateJson": "{\"cells\":[\"\",\"\",\"\",\"\",\"X\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"O\",\"winnerMark\":null,\"line\":null,\"moveCount\":1}",
+            "submissionJson": "{\"cell\":-1}",
+            "playerId": "uid-o",
+            "seed": 0,
+            "configJson": "{}",
+            "expected": {
+                "valid": false,
+                "errors": [
+                    "cellOutOfRange"
+                ]
+            }
+        },
+        {
+            "name": "reject-game-complete",
+            "stateJson": "{\"cells\":[\"X\",\"X\",\"X\",\"O\",\"O\",\"\",\"\",\"\",\"\"],\"marks\":{\"X\":\"uid-x\",\"O\":\"uid-o\"},\"next\":\"O\",\"winnerMark\":\"X\",\"line\":[0,1,2],\"moveCount\":5}",
+            "submissionJson": "{\"cell\":5}",
+            "playerId": "uid-o",
+            "seed": 0,
+            "configJson": "{}",
+            "expected": {
+                "valid": false,
+                "errors": [
+                    "gameComplete"
+                ]
+            }
+        }
+    ]
+}
