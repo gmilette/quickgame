@@ -15,3 +15,11 @@ pubsub-debug.log
 .firebase/
 iosApp/build/
 xcuserdata/
+node_modules/
+app/ios/iosApp/Pods/
+app/ios/iosApp/iosApp.xcodeproj/
+app/ios/iosApp/iosApp.xcworkspace/
+app/ios/Shared.podspec
+functions/src/generated/
+google-services.json
+GoogleService-Info.plist
