@@ -2,11 +2,10 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidLibrary)
     alias(libs.plugins.kotlinSerialization)
-    alias(libs.plugins.composeMultiplatform)
-    alias(libs.plugins.composeCompiler)
 }
 
 kotlin {
+    jvm()
     androidTarget()
     if (providers.gradleProperty("quickgames.ios").orNull == "true") {
         iosArm64()
@@ -17,13 +16,11 @@ kotlin {
         commonMain.dependencies {
             api(project(":core:model"))
             api(project(":core:engine"))
-            api(project(":core:ui"))
-            implementation(compose.runtime)
-            implementation(compose.foundation)
-            implementation(compose.material3)
         }
-        androidUnitTest.dependencies {
+        commonTest.dependencies {
             implementation(kotlin("test"))
+        }
+        jvmTest.dependencies {
             implementation(kotlin("test-junit"))
         }
     }

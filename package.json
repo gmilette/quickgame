@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "e2e": "firebase emulators:exec --project demo-quickgames --only auth,firestore,functions \"node e2e/run.mjs\""
+    "e2e": "firebase emulators:exec --project demo-quickgames --only auth,firestore \"node e2e/run.mjs\"",
+    "server:build": "./gradlew :server:installDist",
+    "server": "QUICKGAMES_POLL=true FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 GOOGLE_CLOUD_PROJECT=demo-quickgames SERVER_PORT=8081 ./server/build/install/server/bin/server"
   },
   "devDependencies": {
     "firebase": "^12.0.0",

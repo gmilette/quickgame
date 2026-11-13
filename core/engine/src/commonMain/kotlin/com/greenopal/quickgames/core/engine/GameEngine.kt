@@ -26,6 +26,8 @@ interface GameDefinition {
     val gameType: GameType
     val displayName: String
     val configVariants: List<String>
+    val engineVersion: Int
+    val turnDeadlineHours: Int
     fun configJson(variant: String): String
     fun engine(): GameEngine
     fun initialStateJson(configJson: String, players: List<PlayerRef>, seed: Long): String
@@ -36,4 +38,10 @@ class GameRegistry(definitions: List<GameDefinition>) {
 
     operator fun get(gameType: GameType): GameDefinition =
         all.getValue(gameType)
+
+    fun byId(gameTypeId: String): GameDefinition? =
+        GameType.entries.firstOrNull { it.id == gameTypeId }?.let { all[it] }
 }
+
+fun seedForRound(baseSeed: Long, round: Int): Long =
+    (baseSeed xor (round.toLong() * 0x9e3779b9L)) and 0xFFFFFFFFL

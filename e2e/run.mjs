@@ -1,3 +1,7 @@
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { initializeApp } from "firebase/app";
 import { connectAuthEmulator, getAuth, signInAnonymously } from "firebase/auth";
 import {
@@ -17,7 +21,43 @@ import {
 } from "firebase/firestore";
 
 const HOST = "127.0.0.1";
+const SERVER_PORT = 8081;
 const config = { apiKey: "fake-emulator-api-key", projectId: "demo-quickgames", appId: "1:0:web:e2e" };
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(__dirname, "..");
+const serverBin = path.join(repoRoot, "server", "build", "install", "server", "bin", "server");
+let serverProcess = null;
+
+function buildServerIfNeeded() {
+  if (existsSync(serverBin)) return;
+  console.log("== building quickgames server (first run only)");
+  const result = spawnSync("./gradlew", [":server:installDist", "--console=plain"], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    throw new Error("gradle build of :server failed");
+  }
+}
+
+function startServer() {
+  buildServerIfNeeded();
+  serverProcess = spawn(serverBin, [], {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      FIRESTORE_EMULATOR_HOST: `${HOST}:8080`,
+      GOOGLE_CLOUD_PROJECT: "demo-quickgames",
+      QUICKGAMES_POLL: "true",
+      SERVER_PORT: String(SERVER_PORT),
+    },
+    stdio: ["ignore", "inherit", "inherit"],
+  });
+  process.on("exit", () => {
+    serverProcess?.kill();
+  });
+}
 
 let failures = 0;
 function check(condition, label) {
@@ -101,6 +141,17 @@ async function playGame(clients, uids, gameId, cellSequence) {
 }
 
 async function main() {
+  console.log("== starting quickgames server");
+  startServer();
+  await waitFor("server healthz", async () => {
+    try {
+      const res = await fetch(`http://${HOST}:${SERVER_PORT}/healthz`);
+      return res.ok;
+    } catch {
+      return false;
+    }
+  });
+
   console.log("== signing in two anonymous users");
   const a = makeClient("a");
   const b = makeClient("b");
@@ -209,7 +260,7 @@ async function main() {
   await adminDb.doc(`games/${game3.id}`).update({
     turnDeadline: AdminTimestamp.fromMillis(Date.now() - 3600 * 1000),
   });
-  const sweepResponse = await fetch("http://127.0.0.1:5001/demo-quickgames/us-central1/sweepNow");
+  const sweepResponse = await fetch(`http://${HOST}:${SERVER_PORT}/sweepNow`);
   check(sweepResponse.ok, `deadline sweep triggered (http ${sweepResponse.status})`);
   const forfeited = await waitFor("game 3 forfeited", async () => {
     const updated = await readGame(a, game3.id);

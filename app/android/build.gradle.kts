@@ -48,5 +48,6 @@ dependencies {
     implementation(project(":core:firebase"))
     implementation(project(":core:ui"))
     implementation(project(":games:tictactoe"))
+    implementation(project(":games:tictactoe-ui"))
     implementation(libs.androidx.activity.compose)
 }

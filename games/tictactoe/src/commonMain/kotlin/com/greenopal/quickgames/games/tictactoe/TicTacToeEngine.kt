@@ -107,6 +107,8 @@ object TicTacToeDefinition : GameDefinition {
     override val gameType = GameType.TIC_TAC_TOE
     override val displayName = "Tic-Tac-Toe"
     override val configVariants = listOf("standard")
+    override val engineVersion = 1
+    override val turnDeadlineHours = 72
 
     override fun configJson(variant: String): String = "{}"
 

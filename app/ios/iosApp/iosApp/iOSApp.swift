@@ -5,11 +5,11 @@ import FirebaseCore
 struct iOSApp: App {
     init() {
         let options = FirebaseOptions(
-            googleAppID: "1:000000000000:ios:quickgames",
-            gcmSenderID: "000000000000"
+            googleAppID: "1:1047416669336:ios:9fae198807f2501804fced",
+            gcmSenderID: "1047416669336"
         )
-        options.apiKey = "fake-emulator-api-key"
-        options.projectID = "demo-quickgames"
+        options.apiKey = "AIzaSyDfyOdfDWQJVus6QU8VerkRfaB54gkj6JA"
+        options.projectID = "quickgame-336e4"
         FirebaseApp.configure(options: options)
     }
 

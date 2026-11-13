@@ -33,6 +33,7 @@ kotlin {
             implementation(project(":core:firebase"))
             implementation(project(":core:ui"))
             implementation(project(":games:tictactoe"))
+            implementation(project(":games:tictactoe-ui"))
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.material3)

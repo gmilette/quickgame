@@ -5,8 +5,6 @@ local.properties
 .kotlin/
 *.iml
 .idea/
-functions/node_modules/
-functions/lib/
 e2e/node_modules/
 firebase-debug.log
 firestore-debug.log
@@ -20,6 +18,5 @@ app/ios/iosApp/Pods/
 app/ios/iosApp/iosApp.xcodeproj/
 app/ios/iosApp/iosApp.xcworkspace/
 app/ios/Shared.podspec
-functions/src/generated/
 google-services.json
 GoogleService-Info.plist

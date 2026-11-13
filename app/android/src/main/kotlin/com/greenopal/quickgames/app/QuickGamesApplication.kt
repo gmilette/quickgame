@@ -17,13 +17,13 @@ class QuickGamesApplication : Application() {
         Firebase.initialize(
             this,
             FirebaseOptions(
-                applicationId = "1:000000000000:android:quickgames",
-                apiKey = "fake-emulator-api-key",
-                projectId = "demo-quickgames"
+                applicationId = "1:1047416669336:android:f80c551e899bd84804fced",
+                apiKey = "AIzaSyDKvame0OtvpTAzn7xwCsCYLci2IuEaNjQ",
+                projectId = "quickgame-336e4"
             )
         )
         client = FirebaseClient.create(
-            useEmulators = true,
+            useEmulators = false,
             emulatorHost = BuildConfig.EMULATOR_HOST
         )
     }
