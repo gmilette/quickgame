@@ -76,3 +76,33 @@ Read the server logs:
 ```
 gcloud run services logs read quickgames-server --project quickgame-336e4 --region us-central1
 ```
+
+## Turning the server on and off
+
+You normally don't need to. The server sleeps when nobody is playing and only
+costs money for the seconds it spends handling a move.
+
+Turn it off (matchmaking and moves stop being processed):
+```
+./server-off.sh
+```
+
+Turn it back on:
+```
+./server-on.sh
+```
+
+Off blocks Firestore events from reaching the server and pauses the weekly
+sweep. Nothing is deleted and no redeploy is needed. Events that arrive while
+it is off are retried for about a day, so moves made during a short off
+period are applied once it is back on. Moves made during a longer off period
+are not picked up; the player has to wait for the turn to be forfeited.
+
+Remove everything from the cloud for good (run `./deploy.sh` and recreate the
+triggers to come back from this):
+```
+gcloud eventarc triggers delete quickgames-queue-entry --project quickgame-336e4 --location us-central1
+gcloud eventarc triggers delete quickgames-submission --project quickgame-336e4 --location us-central1
+gcloud scheduler jobs delete quickgames-sweep --project quickgame-336e4 --location us-central1
+gcloud run services delete quickgames-server --project quickgame-336e4 --region us-central1
+```
