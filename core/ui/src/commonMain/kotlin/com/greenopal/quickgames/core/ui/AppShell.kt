@@ -40,6 +40,7 @@ import com.greenopal.quickgames.core.model.GameStatus
 import com.greenopal.quickgames.core.model.GameType
 import com.greenopal.quickgames.core.model.OpenGame
 import com.greenopal.quickgames.core.model.PlatformClient
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 sealed interface Screen {
@@ -52,6 +53,8 @@ sealed interface Screen {
 }
 
 private const val MAX_NAME_LENGTH = 24
+private const val JOIN_TIMEOUT_MILLIS = 30_000L
+private const val JOIN_GONE_TIMEOUT_MILLIS = 8_000L
 
 data class OpenGameRequest(val sequence: Int, val gameId: String)
 
@@ -420,6 +423,14 @@ private fun JoinListScreen(
                 game.gameType == target.gameType &&
                 game.players.any { it.uid == target.hostUid }
         }?.let { onMatched(it.id) }
+    }
+    val joiningGone = joining?.let { target -> openGames.none { it.id == target.id } } ?: false
+    LaunchedEffect(joining, joiningGone) {
+        if (joining != null) {
+            delay(if (joiningGone) JOIN_GONE_TIMEOUT_MILLIS else JOIN_TIMEOUT_MILLIS)
+            joining = null
+            message = "That game could not be started. Try another, or start your own."
+        }
     }
 
     Column(Modifier.fillMaxSize()) {

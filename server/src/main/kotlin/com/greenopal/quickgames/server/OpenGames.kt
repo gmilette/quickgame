@@ -65,11 +65,11 @@ fun startJoinedGame(db: Firestore, notifier: Notifier, openGameId: String) {
                 "status" to "active",
                 "winner" to null,
                 "engineVersion" to def.engineVersion,
-                "seed" to seed,
                 "turnDeadline" to deadlineTimestamp(def.turnDeadlineHours),
                 "createdAt" to FieldValue.serverTimestamp()
             )
         )
+        tx.set(secretSeedRef(db, gameRef.id), mapOf("seed" to (random.nextLong() and 0xFFFFFFFFL)))
         if (publicStateJson != stateJson) {
             tx.set(secretStateRef(db, gameRef.id), mapOf("stateJson" to stateJson))
         }

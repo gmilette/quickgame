@@ -405,6 +405,38 @@ async function main() {
   const rpsNotices = await noticesFor(rps.id);
   check(rpsNotices.some((n) => n.title.includes("game over")), "loser is notified when the game ends");
 
+  console.log("== mini rpg: a full game through the server");
+  const known7 = new Set([...known6, noticeGame.id]);
+  let rpg = await startGame(a, uidA, b, uidB, "miniRpg", known7);
+  check(rpg.gameType === "miniRpg", "rpg game created");
+  check(rpg.seed === undefined, "dice seed is not in the public game doc");
+  await expectDenied("players cannot read the secret dice seed", getDoc(doc(a.db, `games/${rpg.id}/secret`, "seed")));
+  let rpgPicks = 0;
+  let samePlayerTwice = false;
+  while (rpg.status === "active" && rpgPicks < 25) {
+    const rpgState = JSON.parse(rpg.stateJson);
+    const uid = rpg.activePlayerId;
+    const hero = rpgState.heroes[uid];
+    const weakest = rpgState.squares.filter((s) => s.claimedBy === null).sort((x, y) => x.tier - y.tier)[0];
+    const payload = { squareId: weakest.id, boonChoices: hero.pendingOffers.map((offer) => offer[0]) };
+    if (hero.pendingLoot) payload.lootDecision = "EQUIP";
+    const round = rpg.round;
+    await submitPayload(clients[uids.indexOf(uid)], rpg.id, round, uid, payload);
+    const next = await waitFor(`rpg pick ${round}`, async () => {
+      const updated = await readGame(a, rpg.id);
+      return updated.round > round ? updated : null;
+    });
+    if (next.status === "active" && next.activePlayerId === uid) samePlayerTwice = true;
+    rpg = next;
+    rpgPicks += 1;
+  }
+  const rpgFinal = JSON.parse(rpg.stateJson);
+  check(rpgPicks === 20, `rpg hunt took 20 picks (got ${rpgPicks})`);
+  check(samePlayerTwice, "snake order gives a player two picks in a row");
+  check(rpg.status === "complete" && rpgFinal.finalBattle !== null, "final battle resolved after the last pick");
+  check(rpg.winner === rpgFinal.winner && rpg.playerUids.includes(rpg.winner), "rpg winner recorded on the game");
+  check(Object.values(rpgFinal.heroes).every((hero) => hero.level >= 3), "both heroes levelled up during the hunt");
+
   if (failures > 0) {
     console.error(`\n${failures} check(s) failed`);
     process.exit(1);

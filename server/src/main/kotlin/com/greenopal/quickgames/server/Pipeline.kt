@@ -23,7 +23,7 @@ data class GameData(
             round = (data["round"] as Number).toInt(),
             stateJson = data["stateJson"] as String,
             status = data["status"] as String,
-            seed = (data["seed"] as Number).toLong()
+            seed = (data["seed"] as? Number)?.toLong() ?: 0L
         )
     }
 }

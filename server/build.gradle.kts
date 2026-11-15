@@ -23,6 +23,7 @@ dependencies {
     implementation(project(":core:engine"))
     implementation(project(":games:tictactoe"))
     implementation(project(":games:rps"))
+    implementation(project(":games:rpg"))
     implementation(platform(libs.google.cloud.bom))
     implementation(libs.google.cloud.firestore)
     testImplementation(kotlin("test"))

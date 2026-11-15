@@ -36,6 +36,8 @@ kotlin {
             implementation(project(":games:tictactoe-ui"))
             implementation(project(":games:rps"))
             implementation(project(":games:rps-ui"))
+            implementation(project(":games:rpg"))
+            implementation(project(":games:rpg-ui"))
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.material3)

@@ -9,6 +9,8 @@ private val log = Logger.getLogger("Submissions")
 
 fun secretStateRef(db: Firestore, gameId: String) = db.document("games/$gameId/secret/state")
 
+fun secretSeedRef(db: Firestore, gameId: String) = db.document("games/$gameId/secret/seed")
+
 fun pollSubmissions(db: Firestore, notifier: Notifier) {
     val pending = db.collectionGroup("submissions").limit(200).get().get()
     for (doc in pending.documents) {
@@ -33,8 +35,12 @@ fun handleSubmission(db: Firestore, notifier: Notifier, gameId: String, subId: S
         val gameData = gameSnap.data ?: return@runTransaction null
         val secretRef = secretStateRef(db, gameId)
         val secretSnap = tx.get(secretRef).get()
+        val seedSnap = tx.get(secretSeedRef(db, gameId)).get()
         val publicGame = GameData.from(gameData)
-        val game = publicGame.copy(stateJson = secretSnap.getString("stateJson") ?: publicGame.stateJson)
+        val game = publicGame.copy(
+            stateJson = secretSnap.getString("stateJson") ?: publicGame.stateJson,
+            seed = seedSnap.getLong("seed") ?: publicGame.seed
+        )
 
         val subRef = db.document("games/$gameId/submissions/$subId")
         val subSnap = tx.get(subRef).get()
