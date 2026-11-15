@@ -1,5 +1,14 @@
 # Quick WW2 — Platform Revision (MVP build spec)
 
+> **Amendment, 2026-11-15.** `IMPLEMENTATION-PLAN.md` §3 is now the build plan and wins wherever it conflicts with this document. Still authoritative here: the rules clarifications in §5 (with one relaxation, below) and the error codes in §5.9. Superseded:
+>
+> - **§1 module layout, §2 shared assets, §6 test vectors, the "TS twin" parts of §3, §10 and §11.** There is no TypeScript implementation. The engine is written once in Kotlin, split into `games/quickww2` (rules) and `games/quickww2-ui` (screen), with the map and config as Kotlin constants.
+> - **Prerequisites.** Per-submission seeds are done (the seed is now hidden from players). Frozen config and the logs flow are not done; the plan works around the logs flow by putting the latest turn's battle reports in the game state. The variant picker is the first task.
+> - **§4.2 submission shape.** Moves carry no `path`; the engine computes reachability. Placement is implicit: land and air units to the capital, and one named sea zone for purchased warships.
+> - **§5.3 warships.** A warship may make a combat move into any reachable zone, not only one holding enemy warships, so cargo can be carried into position and landed in the same turn.
+> - **§7.1 `TurnBuilder`.** Not a separate class; the screen holds the staged turn and asks the engine whether each candidate move is legal.
+> - **§9 balance harness.** Unchanged in content, deferred until after hand play, and lives in `jvmTest`.
+
 This document amends `quick-ww2-agent-spec.md` so that Quick WW2 can be built against the platform exactly as it exists in this repo (see `IMPLEMENTATION-PLAN.md` §0). Where the two conflict, this document wins. The spec remains authoritative for the map (§2), units (§3), turn structure (§4), modes (§1a), starting forces (§8), bots (§10 Phase 2), and UI intent (§9). Everything below is written so a coding agent can execute it without further design decisions; defaults for the few remaining judgment calls are in §12.
 
 Prerequisite: `IMPLEMENTATION-PLAN.md` §2 (P0) is complete. In particular P0.2 (per-submission seeds), P0.3 (frozen `configJson` on the game doc), P0.4 (`logs` flow into `GameScreen`), P0.5 (variant picker), and P0.7 (shared assets).

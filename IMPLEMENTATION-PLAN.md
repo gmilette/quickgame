@@ -1,5 +1,7 @@
 # Consolidated Implementation Plan
 
+> **Status note, 2026-11-15.** Only §3 (Quick WW2) has been revised since September. The rest of this document predates several changes and is stale where it mentions them: the TypeScript Cloud Functions, test vectors and shared assets are gone (one Kotlin engine runs on both the app and a Cloud Run server); matchmaking is a public start/join lobby instead of a queue; rock paper scissors and a first version of the Mini RPG are built; resign and push notifications are built; the app points at the real project `quickgame-336e4`. `README.md` describes the current setup.
+
 Working plan for the quickgames platform and its four games. Revised 2026-09-12 against the code as built; the previous revision predated any code. Source documents and precedence:
 
 1. `platform-implementation-plan.md` — master for anything platform-shaped. Where this document records that the built code deliberately differs from it (Reconciliation #10–#14), the built code wins and the master is stale on that point.
@@ -116,15 +118,60 @@ P0 gate: everything in §0 "built" still passes; `test-vectors/rng.json` passes 
 
 ---
 
-## 3. Phase D — Quick WW2 (the MVP game)
+## 3. Phase D — Quick WW2
 
-Everything is specified in `quick-ww2-platform-revision.md`. Sub-phases and gates, in order:
+Revised 2026-11-15 against the code as it now stands. Not started. This section supersedes the sub-phases in `quick-ww2-platform-revision.md` §11 and every part of that document that depends on the TypeScript twin, test vectors or shared assets; see the amendment at the top of that document. Rules stay as specified: map (spec §2), units (§3), turn structure (§4), modes (§1a), starting forces (§8), and the rules clarifications in revision §5.
 
-- **D1 Engine (Kotlin).** `:games:quickww2` from the tic-tac-toe template; `shared-assets/quickww2/map.json` and `config.json`; models, map loader with symmetry validation, `validateTurn`/`applyTurn`/`checkVictory`, `GameDefinition`/`GameEngine` adapters. Unit tests per revision §8; vectors exported. Gate: all listed rules clauses have a passing test and a vector; determinism test green.
-- **D2 TS twin.** `functions/src/games/quickww2.ts` passes `test-vectors/quickww2.json` and the asset hash check; registered in `registry.ts`. Gate: vitest green; e2e Quick WW2 section (revision §10) green.
-- **D3 Balance harness.** Bots and harness per revision §9; run per mode; apply config levers only. Gate: MVP gate item 5.
-- **D4 Client.** `TurnBuilder`, five screens, replay, rejection handling per revision §7. Gate: full game vs the pass-bot opponent on the Android emulator; every illegal move class from D1 is unstageable.
-- **D5 Cross-platform and deploy.** iOS simulator plays against Android; then both against the real project. Gate: MVP gate items 3–4.
+### 3.0 What changed since the September plan
+
+- One engine. The server is Kotlin on Cloud Run and runs the same `GameDefinition` as the app. There is no TypeScript twin, no parity vectors and no shared-asset pipeline. The map and config are Kotlin constants in the game module, as `RpgContent` is for the RPG.
+- Built already and reusable: start/join lobby (`openGames`), display names, resign, push notifications, the weekly deadline sweep, the hidden per-game dice seed (`games/{id}/secret/seed`), and `publicStateJson` for hidden information (not needed here; the game is perfect information).
+- Module pattern is `games/<name>` (engine, `jvm` + Android + iOS, no Compose) plus `games/<name>-ui` (Compose screen). Registration is `server/.../Registry.kt`, `MainActivity.kt` and `MainViewController.kt`. `GameType.QUICK_WW2` (`quickWw2`) already exists.
+- The RPG shipped first as the experiment game, so this is no longer "the MVP game"; the build order question in §8 is closed.
+- Still missing on the platform and needed here: a variant picker (D0) and a way to show what happened on the opponent's turn (D0).
+
+### 3.1 Sub-phases and gates
+
+- **D0 Platform prerequisites.**
+  1. Variant picker. Add `fun variantName(variant: String): String` to `GameDefinition` (default returns the id). `PickGameScreen` shows a second step listing variants when a definition has more than one. The join list and menu rows show the variant name next to the game name. `openGames` already stores `variant`; no rules change.
+  2. Turn report in state. Follow the RPG: the engine writes the latest turn's battle reports into the public state (`lastTurn`), so the app can show them without a logs read path. The generic logs flow (September gap G4) stays deferred.
+  3. Config freeze (September gap G3) stays open. `configJson(variant)` is still re-read on every submission, so a tuning deploy changes games in progress. Acceptable while testing with two phones; fix before any wider use.
+  Gate: tic-tac-toe, rock paper scissors and the RPG still pass `npm run e2e`; starting a multi-variant game asks for a variant.
+
+- **D1 Engine** (`games/quickww2`). Files: `Ww2Content.kt` (map, unit stats, starting forces, mode presets), `Ww2Models.kt`, `Ww2Rules.kt` (movement, reachability, capacity, placement), `Ww2Combat.kt`, `Ww2Engine.kt` (`GameEngine` + `GameDefinition`). `configVariants = ["classic", "tanks-and-soldiers", "navy-and-air", "army-battle"]`, `turnDeadlineHours = 72`. Axis is `playerIndex 0`.
+  Simplifications to the submission shape, chosen so the client can stage moves without duplicating path logic:
+  - `Move(unitType, count, from, to, cargo)` has no `path`; the engine works out reachability (land units through own territory, tanks two steps, warships two zones not through enemy warships, fighters by distance).
+  - Placement is implicit: land and air purchases go to the capital; `warshipPlacement` names one legal sea zone for all purchased warships.
+  - A warship may make a combat move into any reachable zone, with or without enemy warships, so it can carry cargo into position for an amphibious landing in the same turn. This relaxes revision §5.3 and is the one deliberate rules change; flag back if playtests show it is too strong.
+  Validation and application share one staging routine: validation runs it without resolving battles, application runs it with the seeded dice. Expose that routine as a plain Kotlin function so the client can test a candidate move without going through JSON.
+  Tests (`commonTest`): one per movement case in revision §5.3, transport load/unload/over-capacity, amphibious cancellation when the carrying warships are sunk, artillery boost recomputed each round, casualty order, only-fighters-survive does not capture, capital capture ends the turn, turn cap and its tiebreakers, each mode's buildable set, overspend, unit moved twice; a fuzz test of random legal turns asserting no zone ends with warships of both sides; a determinism test replaying the same seeds.
+  Gate: all tests green on `:games:quickww2:jvmTest`.
+
+- **D2 Server and end-to-end.** Register `QuickWw2Definition` in `Registry.kt`; add the module to `server/build.gradle.kts`. No rules, trigger or index changes. Extend `e2e/run.mjs`: host and join a `quickWw2` game in one variant; submit a turn with a real attack and assert a battle report appears in the state and ownership or losses changed; submit a purchase in a restricted mode and assert the rejection; pass turns to the cap and assert the economic winner.
+  Gate: `npm run e2e` green.
+
+- **D3 Client** (`games/quickww2-ui`). First version is functional, not pixel art:
+  - Schematic map: the 16 regions laid out by hand as tappable tiles, colored by owner, showing income and unit counts.
+  - Staging: tap a region, choose a unit type and count, legal destinations highlight (computed by calling the engine's staging routine with the candidate move), tap one to stage it. Combat versus non-combat is decided by the destination. A staged-moves list with undo.
+  - Buy panel listing only the mode's buildable units, with treasury remaining and the warship placement zone.
+  - Submit sends the whole turn; nothing is sent before that.
+  - Turn report: a text summary of each battle from `lastTurn` (forces, hits per round, losses, result), then income collected.
+  - End screen: winner and reason.
+  `TurnBuilder` from revision §7.1 is not built as a separate class; staging state lives in the screen and legality comes from the engine.
+  Gate: a full game between two Android phones on the real project, including one amphibious landing and one fighter attack.
+
+- **D4 Balance harness.** Bots (LandRush, Turtle, SeaRaider, Balanced) and the round-robin from spec §10 Phase 2, run per mode, as a `jvmTest` gated by `-Pbalance=true`. Tune through content values only. Deferred until the game has been played by hand.
+  Gate: spec §10 Phase 2 acceptance per mode.
+
+- **D5 Polish.** Step-by-step battle playback with dice, the pixel-art map, drag-to-move, per-error messages for server rejections, and iOS once the CocoaPods blocker (September gap G10) is cleared.
+
+### 3.2 Order and effort
+
+D0 → D1 → D2 → D3 gets a playable game; D1 and D3 are the bulk of the work, and D3 is the larger of the two because staging a full turn is the hardest screen in the suite. D4 and D5 are independent of each other and can follow in either order.
+
+### 3.3 Deploy
+
+Server and app only, as for the RPG: `./deploy.sh`, then reinstall the app on each phone. Both must be updated together; an older server deletes an open game whose type it does not recognise.
 
 ---
 
