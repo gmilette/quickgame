@@ -31,6 +31,7 @@ interface GameDefinition {
     fun configJson(variant: String): String
     fun engine(): GameEngine
     fun initialStateJson(configJson: String, players: List<PlayerRef>, seed: Long): String
+    fun publicStateJson(stateJson: String): String = stateJson
 }
 
 class GameRegistry(definitions: List<GameDefinition>) {

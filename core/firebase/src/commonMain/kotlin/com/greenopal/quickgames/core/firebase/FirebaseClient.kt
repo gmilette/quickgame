@@ -3,6 +3,7 @@ package com.greenopal.quickgames.core.firebase
 import com.greenopal.quickgames.core.model.GameDoc
 import com.greenopal.quickgames.core.model.GameStatus
 import com.greenopal.quickgames.core.model.GameType
+import com.greenopal.quickgames.core.model.OpenGame
 import com.greenopal.quickgames.core.model.PlatformClient
 import com.greenopal.quickgames.core.model.PlayerRef
 import dev.gitlive.firebase.Firebase
@@ -39,6 +40,21 @@ data class GameDocDto(
     val createdAt: Timestamp? = null
 )
 
+@Serializable
+data class OpenGameDto(
+    val gameType: String,
+    val variant: String,
+    val hostUid: String,
+    val hostName: String = "Player",
+    val guestUid: String? = null,
+    val createdAt: Timestamp? = null
+)
+
+@Serializable
+data class UserDto(
+    val displayName: String? = null
+)
+
 class FirebaseClient(
     private val auth: FirebaseAuth,
     private val firestore: FirebaseFirestore
@@ -65,18 +81,57 @@ class FirebaseClient(
                 if (doc.exists) runCatching { toGameDoc(doc.id, doc.data<GameDocDto>()) }.getOrNull() else null
             }
 
-    override suspend fun joinQueue(gameType: GameType, variant: String, uid: String, displayName: String) {
-        queueEntry(gameType, variant, uid).set(
+    override suspend fun loadDisplayName(uid: String): String? {
+        val doc = firestore.collection("users").document(uid).get()
+        return if (doc.exists) doc.data<UserDto>().displayName else null
+    }
+
+    override suspend fun saveDisplayName(uid: String, displayName: String) {
+        firestore.collection("users").document(uid).set(mapOf("displayName" to displayName))
+    }
+
+    override suspend fun savePushToken(uid: String, token: String) {
+        firestore.collection("users").document(uid)
+            .collection("private").document("push")
+            .set(mapOf("token" to token, "updatedAt" to FieldValue.serverTimestamp))
+    }
+
+    override fun openGames(): Flow<List<OpenGame>> =
+        firestore.collection("openGames")
+            .snapshots
+            .map { snapshot ->
+                snapshot.documents
+                    .mapNotNull { doc -> runCatching { toOpenGame(doc.id, doc.data<OpenGameDto>()) }.getOrNull() }
+                    .sortedBy { it.createdAtMillis ?: Long.MAX_VALUE }
+            }
+
+    override suspend fun hostGame(gameType: GameType, variant: String, uid: String, displayName: String) {
+        openGame(gameType, uid).set(
             mapOf(
-                "uid" to uid,
-                "displayName" to displayName,
+                "gameType" to gameType.id,
+                "variant" to variant,
+                "hostUid" to uid,
+                "hostName" to displayName,
+                "guestUid" to null,
+                "guestName" to null,
                 "createdAt" to FieldValue.serverTimestamp
             )
         )
     }
 
-    override suspend fun leaveQueue(gameType: GameType, variant: String, uid: String) {
-        queueEntry(gameType, variant, uid).delete()
+    override suspend fun cancelHostedGame(gameType: GameType, uid: String) {
+        openGame(gameType, uid).delete()
+    }
+
+    override suspend fun joinOpenGame(openGameId: String, uid: String, displayName: String) {
+        firestore.collection("openGames").document(openGameId)
+            .update(mapOf("guestUid" to uid, "guestName" to displayName))
+    }
+
+    override suspend fun resign(gameId: String, uid: String) {
+        firestore.collection("games").document(gameId)
+            .collection("resignations").document(uid)
+            .set(mapOf("createdAt" to FieldValue.serverTimestamp))
     }
 
     override suspend fun submit(gameId: String, round: Int, payloadJson: String) {
@@ -90,9 +145,21 @@ class FirebaseClient(
             )
     }
 
-    private fun queueEntry(gameType: GameType, variant: String, uid: String) =
-        firestore.collection("queues").document("${gameType.id}_$variant")
-            .collection("entries").document(uid)
+    private fun openGame(gameType: GameType, uid: String) =
+        firestore.collection("openGames").document("${uid}_${gameType.id}")
+
+    private fun toOpenGame(id: String, dto: OpenGameDto): OpenGame? {
+        val gameType = GameType.fromIdOrNull(dto.gameType) ?: return null
+        return OpenGame(
+            id = id,
+            gameType = gameType,
+            variant = dto.variant,
+            hostUid = dto.hostUid,
+            hostName = dto.hostName,
+            guestUid = dto.guestUid,
+            createdAtMillis = dto.createdAt?.let { it.seconds * 1000 + it.nanoseconds / 1_000_000 }
+        )
+    }
 
     private fun toGameDoc(id: String, dto: GameDocDto): GameDoc = GameDoc(
         id = id,

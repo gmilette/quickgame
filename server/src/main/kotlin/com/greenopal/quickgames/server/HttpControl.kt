@@ -35,22 +35,23 @@ private fun HttpServer.route(path: String, handler: (HttpExchange) -> String) {
     }
 }
 
-fun startHttpControl(db: Firestore, port: Int): HttpServer {
+fun startHttpControl(db: Firestore, notifier: Notifier, port: Int): HttpServer {
     val server = HttpServer.create(InetSocketAddress(port), 0)
 
     server.route("/healthz") { "ok" }
 
     server.route("/sweepNow") {
-        val forfeited = sweepExpiredGames(db)
-        """{"forfeited":$forfeited}"""
+        val forfeited = sweepExpiredGames(db, notifier)
+        val staleOpenGames = sweepStaleOpenGames(db)
+        """{"forfeited":$forfeited,"staleOpenGames":$staleOpenGames}"""
     }
 
-    server.route("/events/queue") { exchange ->
+    server.route("/events/open-game") { exchange ->
         val segments = exchange.documentSegments()
-        if (segments.size == 4 && segments[0] == "queues" && segments[2] == "entries") {
-            matchQueue(db, segments[1])
+        if (segments.size == 2 && segments[0] == "openGames") {
+            startJoinedGame(db, notifier, segments[1])
         } else {
-            log.warning("ignored queue event for $segments")
+            log.warning("ignored open game event for $segments")
         }
         "ok"
     }
@@ -58,9 +59,19 @@ fun startHttpControl(db: Firestore, port: Int): HttpServer {
     server.route("/events/submission") { exchange ->
         val segments = exchange.documentSegments()
         if (segments.size == 4 && segments[0] == "games" && segments[2] == "submissions") {
-            handleSubmission(db, segments[1], segments[3])
+            handleSubmission(db, notifier, segments[1], segments[3])
         } else {
             log.warning("ignored submission event for $segments")
+        }
+        "ok"
+    }
+
+    server.route("/events/resignation") { exchange ->
+        val segments = exchange.documentSegments()
+        if (segments.size == 4 && segments[0] == "games" && segments[2] == "resignations") {
+            handleResignation(db, notifier, segments[1], segments[3])
+        } else {
+            log.warning("ignored resignation event for $segments")
         }
         "ok"
     }

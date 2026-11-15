@@ -33,6 +33,8 @@ include(":core:firebase")
 include(":core:ui")
 include(":games:tictactoe")
 include(":games:tictactoe-ui")
+include(":games:rps")
+include(":games:rps-ui")
 include(":server")
 include(":app:android")
 if (providers.gradleProperty("quickgames.ios").orNull == "true") {

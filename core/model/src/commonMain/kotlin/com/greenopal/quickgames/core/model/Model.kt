@@ -6,14 +6,26 @@ import kotlinx.serialization.Serializable
 @Serializable
 enum class GameType(val id: String) {
     @SerialName("tictactoe") TIC_TAC_TOE("tictactoe"),
+    @SerialName("rps") ROCK_PAPER_SCISSORS("rps"),
     @SerialName("miniRpg") MINI_RPG("miniRpg"),
     @SerialName("riskLite") RISK_LITE("riskLite"),
     @SerialName("quickWw2") QUICK_WW2("quickWw2");
 
     companion object {
         fun fromId(id: String): GameType = entries.first { it.id == id }
+        fun fromIdOrNull(id: String): GameType? = entries.firstOrNull { it.id == id }
     }
 }
+
+data class OpenGame(
+    val id: String,
+    val gameType: GameType,
+    val variant: String,
+    val hostUid: String,
+    val hostName: String,
+    val guestUid: String?,
+    val createdAtMillis: Long?
+)
 
 @Serializable
 data class PlayerRef(

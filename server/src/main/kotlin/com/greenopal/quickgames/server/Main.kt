@@ -25,17 +25,18 @@ fun buildFirestore(): Firestore {
 
 fun main() {
     val db = buildFirestore()
+    val notifier = buildNotifier(db, db.options.projectId)
 
     if (System.getenv("QUICKGAMES_POLL") == "true") {
-        startMatchmakingLoop(db)
-        startSubmissionPollLoop(db)
-        startDeadlineSweepLoop(db)
+        startPollLoop("open-games", 1000) { pollOpenGames(db, notifier) }
+        startPollLoop("submissions", 1000) { pollSubmissions(db, notifier) }
+        startPollLoop("resignations", 1000) { pollResignations(db, notifier) }
     }
 
     val port = System.getenv("PORT")?.toIntOrNull()
         ?: System.getenv("SERVER_PORT")?.toIntOrNull()
         ?: 8081
-    startHttpControl(db, port)
+    startHttpControl(db, notifier, port)
 
     log.info("quickgames server ready on port $port")
     Thread.currentThread().join()

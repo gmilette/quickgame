@@ -49,5 +49,8 @@ dependencies {
     implementation(project(":core:ui"))
     implementation(project(":games:tictactoe"))
     implementation(project(":games:tictactoe-ui"))
+    implementation(project(":games:rps"))
+    implementation(project(":games:rps-ui"))
     implementation(libs.androidx.activity.compose)
+    implementation(libs.firebase.messaging)
 }

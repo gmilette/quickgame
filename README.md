@@ -58,24 +58,47 @@ any of this — it talks to the emulators directly.
 ## Playing for real on two phones
 
 The server runs on Cloud Run in project `quickgame-336e4`. It sleeps until
-Firestore wakes it for a new queue entry or move, so there is nothing to start
+Firestore wakes it when someone joins a game, makes a move or resigns, so there is nothing to start
 or stop before playing. A weekly Cloud Scheduler job forfeits games whose turn
-deadline has passed.
+deadline has passed and removes open games nobody joined within three days.
 
 Install the app on each Android phone:
 ```
 ./gradlew :app:android:installDebug
 ```
 
-Redeploy the server after changing code under `server/`, `core/` or `games/`:
+Push changes live, in this order:
 ```
-./deploy.sh
+npx firebase deploy --only firestore --project quickgame-336e4   # rules and indexes
+./deploy.sh                                                      # server code
+./setup-triggers.sh                                              # triggers and push messaging, run once
 ```
+Then reinstall the app on each phone. The app, rules and server have to match,
+so do all of these together.
 
 Read the server logs:
 ```
 gcloud run services logs read quickgames-server --project quickgame-336e4 --region us-central1
 ```
+
+## Push notifications
+
+The server sends a notification through Firebase Cloud Messaging when:
+
+- someone joins a game you started
+- it becomes your turn
+- a game ends, by a final move, a resignation or a missed deadline
+
+Tapping a notification opens that game. Nothing is shown while the app is open
+in the foreground, since the screens update live.
+
+Each phone saves its device token at `users/{uid}/private/push`, readable only
+by that player. Android 13 and later ask for notification permission on first
+launch; a player who declines gets no notifications. Android only for now.
+
+Against the emulators the server sends nothing. The end-to-end test sets
+`QUICKGAMES_NOTIFY=log`, which records each notification in a
+`debugNotifications` collection so the test can check who was notified.
 
 ## Turning the server on and off
 
@@ -101,8 +124,20 @@ are not picked up; the player has to wait for the turn to be forfeited.
 Remove everything from the cloud for good (run `./deploy.sh` and recreate the
 triggers to come back from this):
 ```
-gcloud eventarc triggers delete quickgames-queue-entry --project quickgame-336e4 --location us-central1
+gcloud eventarc triggers delete quickgames-open-game --project quickgame-336e4 --location us-central1
+gcloud eventarc triggers delete quickgames-resignation --project quickgame-336e4 --location us-central1
 gcloud eventarc triggers delete quickgames-submission --project quickgame-336e4 --location us-central1
 gcloud scheduler jobs delete quickgames-sweep --project quickgame-336e4 --location us-central1
 gcloud run services delete quickgames-server --project quickgame-336e4 --region us-central1
 ```
+
+## Adding a game
+
+1. Create `games/<name>` (engine, no UI) and `games/<name>-ui` (Compose screen),
+   copying `games/rps` and `games/rps-ui`.
+2. Add a `GameType` entry in `core/model`.
+3. Register the definition in `server/.../Registry.kt` and in `MainActivity.kt`
+   (definition and UI).
+
+A game that needs hidden information overrides `publicStateJson`; the server
+then keeps the full state where players cannot read it.

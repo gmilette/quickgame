@@ -9,7 +9,8 @@ private val log = Logger.getLogger("DeadlineSweep")
 fun deadlineTimestamp(hours: Int): Timestamp =
     Timestamp.ofTimeSecondsAndNanos(System.currentTimeMillis() / 1000 + hours * 3600L, 0)
 
-fun sweepExpiredGames(db: Firestore): Int {
+fun sweepExpiredGames(db: Firestore, notifier: Notifier): Int {
+    val notices = mutableListOf<Notice>()
     val now = Timestamp.now()
     val expired = db.collection("games")
         .whereEqualTo("status", "active")
@@ -41,25 +42,17 @@ fun sweepExpiredGames(db: Firestore): Int {
                 )
             )
             forfeited += 1
+            val title = gameDisplayName(snap.getString("gameType"))
+            if (winner != null) {
+                notices += Notice(winner, "$title: you win", "Your opponent ran out of time", doc.id)
+            }
+            if (activePlayerId != null) {
+                notices += Notice(activePlayerId, "$title: game over", "You ran out of time", doc.id)
+            }
             log.info("game forfeited on deadline ${doc.id} winner=$winner")
             null
         }.get()
     }
+    notifier.sendAll(notices)
     return forfeited
-}
-
-fun startDeadlineSweepLoop(db: Firestore, intervalMinutes: Long = 60) {
-    val thread = Thread({
-        while (true) {
-            Thread.sleep(intervalMinutes * 60_000)
-            try {
-                sweepExpiredGames(db)
-            } catch (e: Exception) {
-                log.warning("sweep failed: ${e.message}")
-            }
-        }
-    }, "deadline-sweep")
-    thread.isDaemon = true
-    thread.start()
-    log.info("deadline sweep loop started (every $intervalMinutes min)")
 }

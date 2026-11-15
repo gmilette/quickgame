@@ -19,9 +19,11 @@ class QuickGamesApplication : Application() {
             FirebaseOptions(
                 applicationId = "1:1047416669336:android:f80c551e899bd84804fced",
                 apiKey = "AIzaSyDKvame0OtvpTAzn7xwCsCYLci2IuEaNjQ",
-                projectId = "quickgame-336e4"
+                projectId = "quickgame-336e4",
+                gcmSenderId = "1047416669336"
             )
         )
+        Push.createChannel(this)
         client = FirebaseClient.create(
             useEmulators = false,
             emulatorHost = BuildConfig.EMULATOR_HOST

@@ -1,9 +1,11 @@
 package com.greenopal.quickgames.core.ui
 
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -54,7 +56,8 @@ private val pixelTypography = Typography(
 fun QuickGamesTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = pixelColors,
-        typography = pixelTypography,
-        content = content
-    )
+        typography = pixelTypography
+    ) {
+        CompositionLocalProvider(LocalContentColor provides PixelPalette.text, content = content)
+    }
 }

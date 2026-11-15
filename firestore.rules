@@ -10,22 +10,52 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/games/$(gameId)).data;
     }
 
-    match /users/{uid} {
-      allow read: if signedIn();
-      allow write: if signedIn() && request.auth.uid == uid;
+    function validName(name) {
+      return name is string && name.size() > 0 && name.size() <= 24;
     }
 
-    match /queues/{queueId}/entries/{uid} {
-      allow read: if signedIn() && request.auth.uid == uid;
-      allow create: if signedIn()
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow write: if signedIn()
         && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['uid', 'displayName', 'createdAt'])
-        && request.resource.data.uid == uid
-        && request.resource.data.displayName is string
-        && request.resource.data.displayName.size() <= 40
+        && request.resource.data.keys().hasOnly(['displayName'])
+        && validName(request.resource.data.displayName);
+
+      match /private/push {
+        allow read, delete: if signedIn() && request.auth.uid == uid;
+        allow create, update: if signedIn()
+          && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['token', 'updatedAt'])
+          && request.resource.data.token is string
+          && request.resource.data.token.size() > 0
+          && request.resource.data.token.size() < 4096
+          && request.resource.data.updatedAt == request.time;
+      }
+    }
+
+    match /openGames/{openId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['gameType', 'variant', 'hostUid', 'hostName', 'guestUid', 'guestName', 'createdAt'])
+        && request.resource.data.hostUid == request.auth.uid
+        && request.resource.data.gameType is string
+        && request.resource.data.gameType.size() <= 40
+        && request.resource.data.variant is string
+        && request.resource.data.variant.size() <= 40
+        && openId == request.auth.uid + '_' + request.resource.data.gameType
+        && validName(request.resource.data.hostName)
+        && request.resource.data.get('guestUid', null) == null
+        && request.resource.data.get('guestName', null) == null
         && request.resource.data.createdAt == request.time;
-      allow delete: if signedIn() && request.auth.uid == uid;
-      allow update: if false;
+      allow update: if signedIn()
+        && resource.data.get('guestUid', null) == null
+        && resource.data.hostUid != request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['guestUid', 'guestName'])
+        && request.resource.data.guestUid == request.auth.uid
+        && validName(request.resource.data.guestName);
+      allow delete: if signedIn()
+        && resource.data.hostUid == request.auth.uid
+        && resource.data.get('guestUid', null) == null;
     }
 
     match /games/{gameId} {
@@ -43,6 +73,16 @@ service cloud.firestore {
           && request.resource.data.payloadJson.size() < 100000
           && request.resource.data.submittedAt == request.time;
         allow update, delete: if false;
+      }
+
+      match /resignations/{uid} {
+        allow create: if signedIn()
+          && request.auth.uid == uid
+          && uid in gameData(gameId).playerUids
+          && gameData(gameId).status == 'active'
+          && request.resource.data.keys().hasOnly(['createdAt'])
+          && request.resource.data.createdAt == request.time;
+        allow read, update, delete: if false;
       }
 
       match /logs/{logId} {

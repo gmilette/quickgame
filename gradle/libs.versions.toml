@@ -9,6 +9,7 @@ activityCompose = "1.10.1"
 androidCompileSdk = "36"
 androidMinSdk = "26"
 googleCloudBom = "26.50.0"
+firebaseMessaging = "24.1.1"
 
 [libraries]
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
@@ -17,7 +18,8 @@ kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-t
 gitlive-firebase-auth = { module = "dev.gitlive:firebase-auth", version.ref = "gitlive" }
 gitlive-firebase-firestore = { module = "dev.gitlive:firebase-firestore", version.ref = "gitlive" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
-google-cloud-bom = { module = "com.google.cloud:libraries-bom", version.ref = "googleCloudBom" }
+firebase-messaging = { module = "com.google.firebase:firebase-messaging", version.ref = "firebaseMessaging" }
+google-cloud-bom ={ module = "com.google.cloud:libraries-bom", version.ref = "googleCloudBom" }
 google-cloud-firestore = { module = "com.google.cloud:google-cloud-firestore" }
 
 [plugins]

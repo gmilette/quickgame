@@ -50,6 +50,7 @@ function startServer() {
       FIRESTORE_EMULATOR_HOST: `${HOST}:8080`,
       GOOGLE_CLOUD_PROJECT: "demo-quickgames",
       QUICKGAMES_POLL: "true",
+      QUICKGAMES_NOTIFY: "log",
       SERVER_PORT: String(SERVER_PORT),
     },
     stdio: ["ignore", "inherit", "inherit"],
@@ -97,12 +98,29 @@ async function expectDenied(label, promise) {
   }
 }
 
-async function joinQueue(client, uid) {
-  await setDoc(doc(client.db, "queues/tictactoe_standard/entries", uid), {
-    uid,
-    displayName: `E2E-${uid.slice(0, 4)}`,
+async function hostGame(client, uid, gameType) {
+  await setDoc(doc(client.db, "openGames", `${uid}_${gameType}`), {
+    gameType,
+    variant: "standard",
+    hostUid: uid,
+    hostName: `Host-${uid.slice(0, 4)}`,
+    guestUid: null,
+    guestName: null,
     createdAt: serverTimestamp(),
   });
+}
+
+async function joinGame(client, uid, hostUid, gameType) {
+  await updateDoc(doc(client.db, "openGames", `${hostUid}_${gameType}`), {
+    guestUid: uid,
+    guestName: `Guest-${uid.slice(0, 4)}`,
+  });
+}
+
+async function startGame(host, hostUid, guest, guestUid, gameType, known) {
+  await hostGame(host, hostUid, gameType);
+  await joinGame(guest, guestUid, hostUid, gameType);
+  return (await waitFor(`${gameType} game created`, () => findGame(host, hostUid, known)));
 }
 
 async function findGame(client, uid, excludeIds) {
@@ -119,8 +137,12 @@ async function readGame(client, gameId) {
 }
 
 async function submitMove(client, gameId, round, uid, cell) {
+  await submitPayload(client, gameId, round, uid, { cell });
+}
+
+async function submitPayload(client, gameId, round, uid, payload) {
   await setDoc(doc(client.db, `games/${gameId}/submissions`, `${round}-${uid}`), {
-    payloadJson: JSON.stringify({ cell }),
+    payloadJson: JSON.stringify(payload),
     submittedAt: serverTimestamp(),
   });
 }
@@ -159,9 +181,30 @@ async function main() {
   const uidB = (await signInAnonymously(b.auth)).user.uid;
   check(uidA && uidB && uidA !== uidB, "two distinct anonymous users");
 
-  console.log("== matchmaking game 1");
-  await joinQueue(a, uidA);
-  await joinQueue(b, uidB);
+  console.log("== open games: host, list, join");
+  const outsider = makeClient("outsider");
+  const uidC = (await signInAnonymously(outsider.auth)).user.uid;
+  await hostGame(a, uidA, "tictactoe");
+  const listed = await getDocs(collection(b.db, "openGames"));
+  check(listed.docs.some((d) => d.data().hostUid === uidA), "other players can see the open game");
+  await expectDenied("host cannot join own game", joinGame(a, uidA, uidA, "tictactoe"));
+  await expectDenied(
+    "cannot host under another player's id",
+    setDoc(doc(b.db, "openGames", `${uidA}_rps`), {
+      gameType: "rps", variant: "standard", hostUid: uidA, hostName: "x", guestUid: null, guestName: null, createdAt: serverTimestamp(),
+    })
+  );
+  await expectDenied(
+    "guest cannot delete the host's open game",
+    deleteDoc(doc(b.db, "openGames", `${uidA}_tictactoe`))
+  );
+  await joinGame(b, uidB, uidA, "tictactoe");
+  try {
+    await joinGame(outsider, uidC, uidA, "tictactoe");
+    check(false, "second joiner is refused (write succeeded)");
+  } catch (error) {
+    check(["permission-denied", "not-found"].includes(error.code), `second joiner is refused (got ${error.code})`);
+  }
   const game1 = await waitFor("game 1 created", () => findGame(a, uidA, new Set()));
   check(game1.status === "active", "game created active");
   check(game1.playerUids.includes(uidA) && game1.playerUids.includes(uidB), "both players in game");
@@ -170,8 +213,8 @@ async function main() {
   const state1 = JSON.parse(game1.stateJson);
   check(state1.marks.X === game1.activePlayerId, "X moves first");
 
-  const queueSnapshot = await getDoc(doc(a.db, "queues/tictactoe_standard/entries", uidA)).catch(() => null);
-  check(!queueSnapshot || !queueSnapshot.exists(), "queue entry consumed");
+  const openSnapshot = await getDoc(doc(a.db, "openGames", `${uidA}_tictactoe`));
+  check(!openSnapshot.exists(), "open game removed once the game starts");
 
   console.log("== security rules");
   const inactiveUid = game1.activePlayerId === uidA ? uidB : uidA;
@@ -191,12 +234,6 @@ async function main() {
     "client cannot write game doc",
     updateDoc(doc(activeClient.db, "games", game1.id), { winner: activeUid })
   );
-  await expectDenied(
-    "client cannot delete opponent queue entry",
-    deleteDoc(doc(activeClient.db, "queues/tictactoe_standard/entries", inactiveUid))
-  );
-  const outsider = makeClient("outsider");
-  await signInAnonymously(outsider.auth);
   await expectDenied(
     "non-player cannot read game",
     getDoc(doc(outsider.db, "games", game1.id))
@@ -238,9 +275,7 @@ async function main() {
 
   console.log("== matchmaking game 2 (draw)");
   const known = new Set([game1.id]);
-  await joinQueue(a, uidA);
-  await joinQueue(b, uidB);
-  const game2 = await waitFor("game 2 created", () => findGame(a, uidA, known));
+  const game2 = await startGame(a, uidA, b, uidB, "tictactoe", known);
   const finished2 = await playGame(clients, uids, game2.id, [0, 4, 8, 1, 7, 6, 2, 5, 3]);
   check(finished2.status === "complete", "game 2 complete");
   check(finished2.winner === null, "game 2 is a draw");
@@ -254,9 +289,7 @@ async function main() {
   const adminApp = initializeAdminApp({ projectId: "demo-quickgames" }, "e2e-admin");
   const adminDb = getAdminFirestore(adminApp);
   const known3 = new Set([game1.id, game2.id]);
-  await joinQueue(a, uidA);
-  await joinQueue(b, uidB);
-  const game3 = await waitFor("game 3 created", () => findGame(a, uidA, known3));
+  const game3 = await startGame(b, uidB, a, uidA, "tictactoe", known3);
   await adminDb.doc(`games/${game3.id}`).update({
     turnDeadline: AdminTimestamp.fromMillis(Date.now() - 3600 * 1000),
   });
@@ -269,6 +302,108 @@ async function main() {
   const expectedWinner = game3.playerUids.find((uid) => uid !== game3.activePlayerId);
   check(forfeited.winner === expectedWinner, "idle player forfeits, opponent wins");
   check(forfeited.activePlayerId === null, "no active player after forfeit");
+
+  console.log("== stale open games are swept");
+  await hostGame(a, uidA, "tictactoe");
+  await adminDb.doc(`openGames/${uidA}_tictactoe`).update({
+    createdAt: AdminTimestamp.fromMillis(Date.now() - 100 * 3600 * 1000),
+  });
+  await fetch(`http://${HOST}:${SERVER_PORT}/sweepNow`);
+  check(!(await getDoc(doc(a.db, "openGames", `${uidA}_tictactoe`))).exists(), "stale open game deleted");
+
+  console.log("== host can cancel an open game");
+  await hostGame(a, uidA, "rps");
+  await deleteDoc(doc(a.db, "openGames", `${uidA}_rps`));
+  check(!(await getDoc(doc(a.db, "openGames", `${uidA}_rps`))).exists(), "host cancelled open game");
+
+  console.log("== resign");
+  const known4 = new Set([game1.id, game2.id, game3.id]);
+  const game4 = await startGame(a, uidA, b, uidB, "tictactoe", known4);
+  await expectDenied(
+    "non-player cannot resign someone else's game",
+    setDoc(doc(outsider.db, `games/${game4.id}/resignations`, uidC), { createdAt: serverTimestamp() })
+  );
+  await expectDenied(
+    "cannot resign on behalf of the opponent",
+    setDoc(doc(a.db, `games/${game4.id}/resignations`, uidB), { createdAt: serverTimestamp() })
+  );
+  const waitingUid = game4.playerUids.find((uid) => uid !== game4.activePlayerId);
+  await setDoc(doc(clients[uids.indexOf(waitingUid)].db, `games/${game4.id}/resignations`, waitingUid), {
+    createdAt: serverTimestamp(),
+  });
+  const resigned = await waitFor("game 4 resigned", async () => {
+    const updated = await readGame(a, game4.id);
+    return updated.status === "forfeited" ? updated : null;
+  });
+  check(resigned.winner === game4.activePlayerId, "resigning out of turn hands the win to the opponent");
+
+  console.log("== rock paper scissors with a hidden first choice");
+  const known5 = new Set([...known4, game4.id]);
+  let rps = await startGame(a, uidA, b, uidB, "rps", known5);
+  check(rps.gameType === "rps", "rps game created");
+  const rpsPlay = async (choice) => {
+    const uid = rps.activePlayerId;
+    const round = rps.round;
+    await submitPayload(clients[uids.indexOf(uid)], rps.id, round, uid, { choice });
+    rps = await waitFor(`rps round ${round}`, async () => {
+      const updated = await readGame(a, rps.id);
+      return updated.round > round ? updated : null;
+    });
+    return uid;
+  };
+  const firstUid = await rpsPlay("rock");
+  check(!rps.stateJson.includes("rock"), "first choice is not visible in the public game state");
+  check(JSON.parse(rps.stateJson).pendingBy === firstUid, "public state shows who has chosen");
+  await expectDenied(
+    "players cannot read the secret state",
+    getDoc(doc(clients[uids.indexOf(rps.activePlayerId)].db, `games/${rps.id}/secret`, "state"))
+  );
+  await rpsPlay("scissors");
+  const afterRound = JSON.parse(rps.stateJson);
+  check(afterRound.scores[firstUid] === 1, "rock beat scissors");
+  check(afterRound.history[0].choices[firstUid] === "rock", "choices are revealed after the round");
+  await rpsPlay("paper");
+  await rpsPlay("scissors");
+  check(rps.status === "complete" && rps.winner === firstUid, "first to two wins the rps game");
+
+  console.log("== display names");
+  await setDoc(doc(a.db, "users", uidA), { displayName: "Greg" });
+  check((await getDoc(doc(b.db, "users", uidA))).data().displayName === "Greg", "name saved and readable");
+  await expectDenied("cannot set another player's name", setDoc(doc(b.db, "users", uidA), { displayName: "Hax" }));
+
+  console.log("== push tokens are private");
+  const pushRef = (client, uid) => doc(client.db, `users/${uid}/private`, "push");
+  await setDoc(pushRef(a, uidA), { token: "token-a", updatedAt: serverTimestamp() });
+  check((await getDoc(pushRef(a, uidA))).data().token === "token-a", "player can save and read own push token");
+  await expectDenied("other players cannot read a push token", getDoc(pushRef(b, uidA)));
+  await expectDenied(
+    "other players cannot overwrite a push token",
+    setDoc(pushRef(b, uidA), { token: "evil", updatedAt: serverTimestamp() })
+  );
+
+  console.log("== notifications");
+  const noticesFor = async (gameId) =>
+    (await adminDb.collection("debugNotifications").where("gameId", "==", gameId).get()).docs.map((d) => d.data());
+  const waitForNotice = (gameId, uid, titlePart) =>
+    waitFor(`notice "${titlePart}" for ${uid.slice(0, 4)}`, async () =>
+      (await noticesFor(gameId)).find((n) => n.uid === uid && n.title.includes(titlePart))
+    );
+  const known6 = new Set([...known5, rps.id]);
+  let noticeGame = await startGame(a, uidA, b, uidB, "tictactoe", known6);
+  check(Boolean(await waitForNotice(noticeGame.id, uidA, "joined")), "host is notified when someone joins");
+  const firstMover = noticeGame.activePlayerId;
+  const secondMover = noticeGame.playerUids.find((uid) => uid !== firstMover);
+  await submitMove(clients[uids.indexOf(firstMover)], noticeGame.id, 0, firstMover, 0);
+  check(Boolean(await waitForNotice(noticeGame.id, secondMover, "your turn")), "next player is notified of their turn");
+  const moverNotices = (await noticesFor(noticeGame.id)).filter((n) => n.uid === firstMover && n.title.includes("your turn"));
+  check(moverNotices.length === 0, "the player who just moved is not notified");
+  await waitFor("move applied", async () => (await readGame(a, noticeGame.id)).round === 1);
+  await setDoc(doc(clients[uids.indexOf(firstMover)].db, `games/${noticeGame.id}/resignations`, firstMover), {
+    createdAt: serverTimestamp(),
+  });
+  check(Boolean(await waitForNotice(noticeGame.id, secondMover, "you win")), "winner is notified when the opponent resigns");
+  const rpsNotices = await noticesFor(rps.id);
+  check(rpsNotices.some((n) => n.title.includes("game over")), "loser is notified when the game ends");
 
   if (failures > 0) {
     console.error(`\n${failures} check(s) failed`);

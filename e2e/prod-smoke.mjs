@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously } from "firebase/auth";
-import { collection, doc, getDoc, getDocs, getFirestore, query, serverTimestamp, setDoc, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, getFirestore, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
 
 const config = { apiKey: "AIzaSyDKvame0OtvpTAzn7xwCsCYLci2IuEaNjQ", projectId: "quickgame-336e4", appId: "1:1047416669336:android:f80c551e899bd84804fced" };
 
@@ -24,9 +24,10 @@ const b = client("b");
 const uidA = (await signInAnonymously(a.auth)).user.uid;
 const uidB = (await signInAnonymously(b.auth)).user.uid;
 const clients = { [uidA]: a, [uidB]: b };
-for (const [uid, c] of Object.entries(clients)) {
-  await setDoc(doc(c.db, "queues/tictactoe_standard/entries", uid), { uid, displayName: "Smoke", createdAt: serverTimestamp() });
-}
+await setDoc(doc(a.db, "openGames", `${uidA}_tictactoe`), {
+  gameType: "tictactoe", variant: "standard", hostUid: uidA, hostName: "Smoke-A", guestUid: null, guestName: null, createdAt: serverTimestamp(),
+});
+await updateDoc(doc(b.db, "openGames", `${uidA}_tictactoe`), { guestUid: uidB, guestName: "Smoke-B" });
 const found = await waitFor("game created", async () => {
   const snap = await getDocs(query(collection(a.db, "games"), where("playerUids", "array-contains", uidA)));
   return snap.docs[0] ?? null;

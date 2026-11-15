@@ -7,30 +7,15 @@ import java.util.logging.Logger
 
 private val log = Logger.getLogger("Submissions")
 
-fun startSubmissionPollLoop(db: Firestore, intervalMillis: Long = 1000) {
-    val thread = Thread({
-        while (true) {
-            try {
-                pollSubmissions(db)
-            } catch (e: Exception) {
-                log.severe("submission poll failed: $e")
-                e.printStackTrace()
-            }
-            Thread.sleep(intervalMillis)
-        }
-    }, "submissions-poll")
-    thread.isDaemon = true
-    thread.start()
-    log.info("submission poll loop started")
-}
+fun secretStateRef(db: Firestore, gameId: String) = db.document("games/$gameId/secret/state")
 
-private fun pollSubmissions(db: Firestore) {
+fun pollSubmissions(db: Firestore, notifier: Notifier) {
     val pending = db.collectionGroup("submissions").limit(200).get().get()
     for (doc in pending.documents) {
         if (doc.get("status") != null) continue
         val gameRef = doc.reference.parent.parent ?: continue
         try {
-            handleSubmission(db, gameRef.id, doc.id)
+            handleSubmission(db, notifier, gameRef.id, doc.id)
         } catch (e: Exception) {
             log.severe("handleSubmission failed for ${gameRef.id}/${doc.id}: $e")
             e.printStackTrace()
@@ -38,13 +23,18 @@ private fun pollSubmissions(db: Firestore) {
     }
 }
 
-fun handleSubmission(db: Firestore, gameId: String, subId: String) {
+fun handleSubmission(db: Firestore, notifier: Notifier, gameId: String, subId: String) {
+    val notices = mutableListOf<Notice>()
     db.runTransaction { tx ->
+        notices.clear()
         val gameRef = db.document("games/$gameId")
         val gameSnap = tx.get(gameRef).get()
         if (!gameSnap.exists()) return@runTransaction null
         val gameData = gameSnap.data ?: return@runTransaction null
-        val game = GameData.from(gameData)
+        val secretRef = secretStateRef(db, gameId)
+        val secretSnap = tx.get(secretRef).get()
+        val publicGame = GameData.from(gameData)
+        val game = publicGame.copy(stateJson = secretSnap.getString("stateJson") ?: publicGame.stateJson)
 
         val subRef = db.document("games/$gameId/submissions/$subId")
         val subSnap = tx.get(subRef).get()
@@ -74,10 +64,16 @@ fun handleSubmission(db: Firestore, gameId: String, subId: String) {
         when (val resolution = resolveSubmission(game, subId, payloadJson)) {
             is SubmissionResolution.Rejected -> reject(resolution.errors)
             is SubmissionResolution.Applied -> {
+                val publicStateJson = gameRegistry.byId(game.gameType)
+                    ?.publicStateJson(resolution.stateJson)
+                    ?: resolution.stateJson
+                if (secretSnap.exists() || publicStateJson != resolution.stateJson) {
+                    tx.set(secretRef, mapOf("stateJson" to resolution.stateJson))
+                }
                 tx.update(
                     gameRef,
                     mapOf(
-                        "stateJson" to resolution.stateJson,
+                        "stateJson" to publicStateJson,
                         "status" to resolution.status.id,
                         "winner" to resolution.winnerUid,
                         "activePlayerId" to resolution.activePlayerId,
@@ -100,9 +96,37 @@ fun handleSubmission(db: Firestore, gameId: String, subId: String) {
                     )
                 }
                 tx.update(subRef, mapOf("status" to "applied"))
+                notices += submissionNotices(gameId, gameData, game, resolution)
                 log.info("submission applied $gameId/$subId status=${resolution.status}")
             }
         }
         null
     }.get()
+    notifier.sendAll(notices)
+}
+
+private fun submissionNotices(
+    gameId: String,
+    gameData: Map<String, Any?>,
+    game: GameData,
+    resolution: SubmissionResolution.Applied
+): List<Notice> {
+    val mover = game.activePlayerId ?: return emptyList()
+    val names = playerNames(gameData)
+    val moverName = names[mover] ?: "Your opponent"
+    val title = gameDisplayName(game.gameType)
+    val opponent = game.playerUids.firstOrNull { it != mover } ?: return emptyList()
+    return when {
+        resolution.status != GameStatus.ACTIVE -> {
+            val outcome = when (resolution.winnerUid) {
+                null -> "Draw against $moverName"
+                opponent -> "You beat $moverName!"
+                else -> "$moverName won"
+            }
+            listOf(Notice(opponent, "$title: game over", outcome, gameId))
+        }
+        resolution.activePlayerId == opponent ->
+            listOf(Notice(opponent, "$title: your turn", "$moverName has moved", gameId))
+        else -> emptyList()
+    }
 }
