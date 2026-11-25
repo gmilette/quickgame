@@ -8,8 +8,10 @@ enum class GameType(val id: String) {
     @SerialName("tictactoe") TIC_TAC_TOE("tictactoe"),
     @SerialName("rps") ROCK_PAPER_SCISSORS("rps"),
     @SerialName("miniRpg") MINI_RPG("miniRpg"),
+    @SerialName("hexstead") HEXSTEAD("hexstead"),
     @SerialName("riskLite") RISK_LITE("riskLite"),
     @SerialName("quickWw2") QUICK_WW2("quickWw2"),
+    @SerialName("spiceRoad") SPICE_ROAD("spiceRoad"),
     @SerialName("squad") SQUAD("squad");
 
     companion object {

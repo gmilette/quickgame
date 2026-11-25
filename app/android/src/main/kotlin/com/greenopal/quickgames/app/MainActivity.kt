@@ -14,12 +14,16 @@ import com.greenopal.quickgames.core.engine.GameRegistry
 import com.greenopal.quickgames.core.ui.App
 import com.greenopal.quickgames.core.ui.GameUiRegistry
 import com.greenopal.quickgames.core.ui.OpenGameRequest
+import com.greenopal.quickgames.games.hexstead.HexsteadDefinition
+import com.greenopal.quickgames.games.hexstead.HexsteadUi
+import com.greenopal.quickgames.games.spiceroad.SpiceRoadDefinition
+import com.greenopal.quickgames.games.spiceroad.SpiceRoadUi
+import com.greenopal.quickgames.games.squad.SquadDefinition
+import com.greenopal.quickgames.games.squad.SquadUi
 import com.greenopal.quickgames.games.rpg.RpgDefinition
 import com.greenopal.quickgames.games.rpg.RpgUi
 import com.greenopal.quickgames.games.rps.RpsDefinition
 import com.greenopal.quickgames.games.rps.RpsUi
-import com.greenopal.quickgames.games.squad.SquadDefinition
-import com.greenopal.quickgames.games.squad.SquadUi
 import com.greenopal.quickgames.games.tictactoe.TicTacToeDefinition
 import com.greenopal.quickgames.games.tictactoe.TicTacToeUi
 
@@ -30,8 +34,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val registry = GameRegistry(listOf(TicTacToeDefinition, RpsDefinition, RpgDefinition, SquadDefinition))
-        val uiRegistry = GameUiRegistry(listOf(TicTacToeUi, RpsUi, RpgUi, SquadUi))
+        val registry = GameRegistry(
+            listOf(TicTacToeDefinition, RpsDefinition, RpgDefinition, HexsteadDefinition, SpiceRoadDefinition, SquadDefinition)
+        )
+        val uiRegistry = GameUiRegistry(listOf(TicTacToeUi, RpsUi, RpgUi, HexsteadUi, SpiceRoadUi, SquadUi))
         val client = (application as QuickGamesApplication).client
         if (savedInstanceState == null) {
             handleNotificationIntent(intent)
