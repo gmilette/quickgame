@@ -1,339 +1,313 @@
 # Quick WW2 — Agent Implementation Spec
 
-Condensed Axis & Allies-style strategy game for the existing KMP + Firebase multiplayer platform. 1v1 asynchronous, cross-platform (Android/iOS). One player is Axis, the other Allies. Turns alternate: the active player submits their whole turn, resolved immediately on submit, then the opponent goes. Perfect information — the opponent's full state is always visible.
+Revised 2026-11-20. This is the single source for Quick WW2. It replaces the previous spec and `quick-ww2-platform-revision.md`, which is deleted. `IMPLEMENTATION-PLAN.md` §3 sequences the work and points here for every rule.
 
-Reuse from platform: Firebase Auth, matchmaking, GitLive SDK setup, Cloud Functions deployment structure, Compose Multiplatform UI shell. All game rules live in the shared engine module; Cloud Functions call the same engine compiled to run server-side validation (TypeScript reimplementation of validation/resolution with shared test vectors, per the platform plan).
+A short Axis & Allies-style strategy game for the quickgames platform. 1v1, asynchronous, Android and iOS. Exactly two sides, **Axis** and **Allies**; each player controls one whole side (there are no separate nations). Turns alternate, the active player submits the whole turn at once, the server resolves it immediately, then the opponent plays. Perfect information.
 
-Target game length: 8–12 rounds, played async over days. All tuning values live in `GameConfig` — nothing hardcoded.
+Target length: 6–10 rounds, played over days. Every tuning value lives in `Ww2Content` (Kotlin constants); no rules code reads a literal number.
+
+---
+
+## 0. Platform facts this spec builds on
+
+- One engine, written in Kotlin. The Cloud Run server (`server/`) and both apps run the same `GameDefinition`. There is no TypeScript implementation, no parity test vectors and no shared-asset pipeline.
+- Module pattern: `games/quickww2` (engine: `jvm` + Android + iOS, no Compose) and `games/quickww2-ui` (Compose screen). Register in `server/.../Registry.kt`, `MainActivity.kt` and `MainViewController.kt`; add the module to `server/build.gradle.kts` and `settings.gradle.kts`. `GameType.QUICK_WW2` (`quickWw2`) already exists.
+- Contract (`core/engine/.../GameEngine.kt`): `GameEngine { activePlayer, validate, apply }` over JSON strings; `GameDefinition { gameType, displayName, configVariants, engineVersion, turnDeadlineHours, configJson(variant), engine(), initialStateJson(configJson, players, seed), publicStateJson }`.
+- The lobby is platform, not game code. Games start from the generic start/join lobby (`openGames`, `core:ui` and `server/OpenGames.kt`). The game module only supplies a `GameDefinition` and never touches matchmaking. The server shuffles host and guest, so `playerIndex 0` (who plays Axis) is random.
+- The server generates a hidden dice seed per submission and passes it to `apply`. Clients never see a seed before the dice are rolled.
+- There is no read path for `logs/` in the client. What happened last turn travels in the public state as `lastTurn` (as `hexstead` does with `lastTurnEvents`).
+- Resign, push notifications and the deadline sweep already exist. The sweep runs weekly, so a 72 h deadline is enforced up to about a week late.
+- Config is re-read from `configJson(variant)` on every submission (not frozen per game). A tuning deploy changes games in progress. Accepted while testing between two phones.
 
 ---
 
 ## 1. Game overview
 
-- Two sides: **Axis** (moves first each round) and **Allies**.
-- Map: fixed hand-authored board, 12 land territories + 4 sea zones (defined in §2). Shipped as a static JSON asset; no map generator.
-- Each territory produces income (IPCs). Spend income on units, move armies, resolve dice combat, capture territory.
-- **Win conditions**, checked after every turn:
+- **Axis** moves first each round. A round is one Axis turn then one Allies turn.
+- Map: one fixed, hand-authored board of 8 land territories and 2 sea zones (§3), defined as Kotlin constants. Map data is kept separate from rules so more maps can be added later as data.
+- Territories produce income. Spend it on units, move, fight with dice, capture territory.
+- **Win conditions**, checked during and after every turn:
   1. Capture the enemy capital → immediate win.
-  2. Turn cap reached (default 12 rounds): higher current income wins; tie → higher total unit value on board; tie → Allies win (compensation for moving second).
-  3. Resignation or turn timeout (default 72h per turn) → forfeit.
+  2. Turn cap (default 10 rounds): after the Allies turn of the last round, higher income wins; tie → higher total unit value on the board; tie → Allies.
+  3. Resignation or deadline expiry → forfeit (platform status, not engine state).
 
-## 1a. Game modes
+### Why capitals fall in this version
 
-Four modes at launch, selected at matchmaking (players are only matched within the same mode). All modes share identical rules and map; they differ only in which units can be purchased. Starting forces are always unchanged (§8) — unbuildable unit types still exist at setup but cannot be replaced, making them finite attrition assets.
+The first draft let a defender put every purchase on its capital, and infantry defend at 2 for 3 IPCs, so capitals were close to untakeable and most games would have gone to the turn cap. This version changes three things, all tunable:
 
-- **CLASSIC** — all five unit types buildable.
-- **TANKS_AND_SOLDIERS** — buildable: INFANTRY, TANK. Simplified entry mode: every purchase decision is guns vs. speed.
-- **NAVY_AND_AIR** — buildable: WARSHIP, FIGHTER. Land armies are irreplaceable, so ground forces must be spent carefully while navies and air power contest the map; games lean on income control and the turn-cap economic victory.
-- **ARMY_BATTLE** — buildable: INFANTRY. Pure attrition infantry war; starting tanks, artillery, fighters, and warships are the only specialists either side will ever have.
+1. **Small map.** The capitals are two land steps apart (Germany – Poland – Russia), and Britain is one sea zone from Germany. A tank or fighter in a capital threatens the other capital from the start.
+2. **Capital placement limit.** At most `capitalPlacementLimit` (default 3) land and air units can be bought per turn, all placed at the capital. Warships are not counted. Extra income banks or goes on quality units and warships, so infantry walls grow slowly.
+3. **Both sides start with money.** `startingTreasury` is 12 for each side, so Allies can reinforce on their first turn instead of facing two Axis attacks with starting forces only.
 
-A mode is purely a `GameConfig` preset (`buildableUnits` plus any overrides); the engine has no mode-specific branches. New modes must be addable by config alone.
+## 2. Game modes
 
-## 2. The map
+Chosen by the host when starting a game (the variant picker, §11 D0). Same rules and map; only the buildable units differ. Starting forces never change, so unbuildable types still exist at setup as irreplaceable units.
 
-Region ids are stable strings used in state, moves, and the map asset.
+| Variant id | Name | Buildable |
+|---|---|---|
+| `classic` | Classic | all five |
+| `tanks-and-soldiers` | Tanks and Soldiers | INFANTRY, TANK |
+| `navy-and-air` | Navy and Air | WARSHIP, FIGHTER |
+| `army-battle` | Army Battle | INFANTRY |
+
+A variant is a preset over the base config (`buildableUnits`, plus optional `unitStats`, `incomeOverrides`, `turnCap` overrides). The engine has no variant-specific branches.
+
+## 3. The map
+
+Region ids are stable strings used in state and moves. Regions are listed in **map order**, used for every deterministic iteration (battle order, state serialization).
 
 ### Land territories
 
-| id | Name | Income | Start owner | Port | Land adjacency | Sea adjacency |
-|---|---|---|---|---|---|---|
-| `germany` | Germany (Axis capital) | 6 | Axis | yes | western-europe, eastern-europe, southern-europe | baltic, north-sea |
-| `western-europe` | Western Europe | 4 | Axis | yes | germany, southern-europe | north-sea, atlantic |
-| `southern-europe` | Southern Europe | 3 | Axis | no | germany, western-europe, balkans | mediterranean |
-| `eastern-europe` | Eastern Europe | 3 | Axis | no | germany, balkans, ukraine | baltic |
-| `balkans` | Balkans | 2 | Axis | no | southern-europe, eastern-europe, ukraine, middle-east | mediterranean |
-| `north-africa` | North Africa | 2 | Axis | no | middle-east | mediterranean, atlantic |
-| `russia` | Russia (Allied capital) | 6 | Allies | yes | ukraine, caucasus, scandinavia | baltic |
-| `united-kingdom` | United Kingdom | 5 | Allies | yes | (none — island) | north-sea, atlantic |
-| `ukraine` | Ukraine | 3 | Allies | no | eastern-europe, balkans, russia, caucasus | (none) |
-| `caucasus` | Caucasus | 2 | Allies | no | russia, ukraine, middle-east | (none) |
-| `middle-east` | Middle East | 2 | Allies | no | caucasus, balkans, north-africa | mediterranean |
-| `scandinavia` | Scandinavia | 2 | Allies | no | russia | north-sea, baltic |
+| id | Name | Income | Start owner | Port | Capital | Land adjacency | Sea adjacency |
+|---|---|---|---|---|---|---|---|
+| `germany` | Germany | 5 | Axis | yes | Axis | france, italy, poland | north-sea |
+| `france` | France | 3 | Axis | yes | — | germany, italy | north-sea, mediterranean |
+| `italy` | Italy | 3 | Axis | yes | — | germany, france | mediterranean |
+| `poland` | Poland | 2 | Axis | no | — | germany, russia, ukraine | — |
+| `russia` | Russia | 5 | Allies | no | Allies | poland, ukraine | — |
+| `ukraine` | Ukraine | 2 | Allies | no | — | poland, russia, middle-east | — |
+| `britain` | Britain | 4 | Allies | yes | — | — (island) | north-sea |
+| `middle-east` | Middle East | 2 | Allies | yes | — | ukraine | mediterranean |
 
-Starting income: Axis 20, Allies 20.
+Starting income: Axis 13, Allies 13.
 
 ### Sea zones
 
 | id | Adjacent land | Adjacent sea |
 |---|---|---|
-| `north-sea` | united-kingdom, scandinavia, western-europe, germany | atlantic, baltic |
-| `atlantic` | united-kingdom, western-europe, north-africa | north-sea, mediterranean |
-| `baltic` | germany, scandinavia, eastern-europe, russia | north-sea |
-| `mediterranean` | southern-europe, balkans, north-africa, middle-east | atlantic |
+| `north-sea` | germany, france, britain | mediterranean |
+| `mediterranean` | france, italy, middle-east | north-sea |
 
-Sea zones have no owner and produce no income; control is by presence only. Adjacency is symmetric; the engine must validate the map asset for symmetry at load time.
+Sea zones have no owner and no income. Each region also carries `x`, `y` on a 1000×700 virtual canvas for the schematic board.
 
-## 3. Units
+Shape of the board: a land front (Poland and Ukraine) between the two capitals; Britain reachable only by sea, and able to strike Germany across the North Sea; Italy and the Middle East facing each other across the Mediterranean.
 
-| Type | Cost | Attack | Defense | Move | Domain | Special |
+Map validation (run in a test, and at startup in debug builds): ids unique; every reference exists; land lists hold only land and sea lists only sea; adjacency symmetric; exactly one capital per side; every land region reachable from every other over the combined graph.
+
+## 4. Units
+
+| Type | Cost | Attack | Defense | Move | Domain | Notes |
 |---|---|---|---|---|---|---|
-| INFANTRY | 3 | 1 | 2 | 1 | land | Attack becomes 2 when paired with artillery (§5) |
-| ARTILLERY | 4 | 2 | 2 | 1 | land | Boosts one infantry per artillery in the same attack |
-| TANK | 5 | 3 | 2 | 2 | land | — |
-| FIGHTER | 8 | 3 | 3 | 3 | air | Based in land territories; returns to launch territory after combat (§4.3) |
-| WARSHIP | 7 | 3 | 3 | 2 | sea | Carries up to 2 land units (§4.4) |
+| INFANTRY | 3 | 1 | 2 | 1 | land | Attacks at 2 when paired with an attacking artillery |
+| ARTILLERY | 4 | 2 | 2 | 1 | land | Boosts one attacking infantry |
+| TANK | 5 | 3 | 2 | 2 | land | |
+| FIGHTER | 8 | 3 | 3 | 3 | air | Lives on land; returns to its launch territory after combat |
+| WARSHIP | 7 | 3 | 3 | 2 | sea | Carries up to 2 land units |
 
-Dice: d6. A unit hits when its roll ≤ its attack (attacking) or defense (defending). All stats are `GameConfig` values.
+d6. A unit hits when its roll ≤ its attack (attacking) or defense (defending).
 
-## 4. Turn structure
+### Content constants (`Ww2Content.kt`)
 
-Each player turn is submitted as a single atomic `TurnSubmission` and processed in this fixed order. Axis takes the first turn of each round; a round is one Axis turn followed by one Allies turn.
+```
+units: per type cost/attack/defense/move/domain (table above)
+casualtyOrder = rollOrder = [INFANTRY, ARTILLERY, TANK, FIGHTER, WARSHIP]
+artilleryBoostedInfantryAttack = 2
+fighterAttackRange = 2
+fighterRelocateRange = 3
+warshipCapacity = 2
+dieSides = 6
+capitalPlacementLimit = 3
+startingTreasury = { axis: 12, allies: 12 }
+turnCap = 10
+startingForces (§9)
+variants (§2)
+```
 
-### 4.1 Purchase
-Spend banked treasury on units. Bought units are held aside and placed in phase 4.5. Overspending is a validation failure.
+`configJson(variant)` serializes the base values merged with the variant's overrides, plus `"variant": "<id>"`. The engine reads only that merged config.
 
-### 4.2 Combat moves
-Moves that enter a region containing enemy units or an enemy-owned land territory.
+## 5. Turn structure
 
-- Land units move up to their move value through friendly/own territories; the final step may enter an enemy region. Tanks may pass through one friendly territory then attack (2 moves total). No moving through enemy territories.
-- Multiple origins may attack the same region (one combined battle per region).
-- Sea combat: warships moving into a sea zone containing enemy warships initiates sea combat. Sea zones with enemy presence block movement through (not into).
-- Amphibious assault: land units aboard a warship may offload into an adjacent enemy land territory. If the sea zone contains enemy warships, sea combat resolves first; if all friendly warships in that zone die, their cargo dies and the land assault is cancelled. Surviving assaults resolve as normal land combat (attackers cannot retreat back to sea).
-- Fighters may attack any region within 2 steps of a friendly land territory they occupy. After combat they automatically return to their launch territory.
+One submission per turn, processed in this order:
 
-### 4.3 Combat resolution (server-side, seeded)
-For each contested region, resolve automatically with no player decisions (same principle as Risk-lite: no per-round choices):
+1. **Purchase.** Spend the treasury.
+2. **Combat moves**, in list order.
+3. **Combat resolution**: all sea battles in map order, then all land battles in map order.
+4. **Noncombat moves**, in list order.
+5. **Placement**: purchased land and air units appear at the capital; purchased warships appear in `warshipPlacement`.
+6. **Income** added to the treasury.
+7. Victory and turn-cap check; turn passes.
 
-1. Compute hit values. Combined arms: each attacking artillery upgrades one attacking infantry to attack 2 for the whole battle.
-2. Each round: all attackers roll, all defenders roll simultaneously; casualties removed after both sides roll.
-3. Casualty order (both sides, fixed): INFANTRY → ARTILLERY → TANK → FIGHTER → WARSHIP. Boosted infantry die before unboosted is NOT tracked — infantry are interchangeable; boost count is recomputed each round from surviving artillery.
-4. Repeat until one side has no units. No retreats.
-5. Attacker wins a land battle → territory ownership flips to attacker (requires at least one surviving land unit; if only fighters survive, territory does not flip and fighters return home). Defender keeps territory otherwise.
-6. Capturing a capital ends the game immediately.
+### 5.1 Submission
 
-RNG: seeded server-side; the seed and per-round rolls are written into the `BattleLog` so clients replay the identical battle.
-
-### 4.4 Noncombat moves
-Remaining movement for units that did not fight: repositioning through friendly regions, loading/unloading warships (load or unload consumes the land unit's entire move), fighters relocating up to 3 between friendly land territories.
-
-### 4.5 Placement
-- Land units and fighters: capital only.
-- Warships: any sea zone adjacent to a friendly port territory (see port column, §2). Placement into a sea zone containing enemy warships is illegal.
-- No placement limit per territory.
-
-### 4.6 Collect income
-Treasury += sum of income of owned territories. Then victory/turn-cap check, then turn passes.
-
-## 5. Kotlin data models (shared module)
-
-```kotlin
-enum class Side { AXIS, ALLIES }
-
-enum class RegionType { LAND, SEA }
-
-enum class UnitType(val cost: Int, val attack: Int, val defense: Int, val move: Int, val domain: Domain) {
-    INFANTRY(3, 1, 2, 1, Domain.LAND),
-    ARTILLERY(4, 2, 2, 1, Domain.LAND),
-    TANK(5, 3, 2, 2, Domain.LAND),
-    FIGHTER(8, 3, 3, 3, Domain.AIR),
-    WARSHIP(7, 3, 3, 2, Domain.SEA)
-}
-
-enum class Domain { LAND, AIR, SEA }
-
-data class RegionDef(
-    val id: String,
-    val name: String,
-    val type: RegionType,
-    val income: Int,
-    val isPort: Boolean,
-    val startOwner: Side?,
-    val adjacentLand: List<String>,
-    val adjacentSea: List<String>
-)
-
-data class MapDef(val regions: List<RegionDef>)
-
-data class UnitStack(val type: UnitType, val owner: Side, val count: Int)
-
-data class RegionState(val owner: Side?, val units: List<UnitStack>)
-
-data class GameState(
-    val gameId: String,
-    val round: Int,
-    val activeSide: Side,
-    val regions: Map<String, RegionState>,
-    val treasuries: Map<Side, Int>,
-    val pendingPlacements: Map<Side, List<UnitType>>,
-    val status: GameStatus,
-    val winner: Side?
-)
-
-enum class GameStatus { ACTIVE, COMPLETE, FORFEITED }
-
-data class Move(
-    val unitType: UnitType,
-    val count: Int,
-    val from: String,
-    val to: String,
-    val path: List<String>,
-    val cargo: List<UnitType> = emptyList()
-)
-
-data class TurnSubmission(
-    val gameId: String,
-    val side: Side,
-    val round: Int,
-    val purchases: Map<UnitType, Int>,
-    val combatMoves: List<Move>,
-    val noncombatMoves: List<Move>,
-    val placements: List<Placement>
-)
-
-data class Placement(val unitType: UnitType, val regionId: String)
-
-data class BattleLog(
-    val regionId: String,
-    val seed: Long,
-    val rounds: List<CombatRound>,
-    val attackerLosses: Map<UnitType, Int>,
-    val defenderLosses: Map<UnitType, Int>,
-    val conqueror: Side?
-)
-
-data class CombatRound(
-    val attackerRolls: List<Int>,
-    val defenderRolls: List<Int>,
-    val attackerHits: Int,
-    val defenderHits: Int
-)
-
-data class UnitStatsOverride(
-    val cost: Int? = null,
-    val attack: Int? = null,
-    val defense: Int? = null,
-    val move: Int? = null
-)
-
-enum class GameMode { CLASSIC, TANKS_AND_SOLDIERS, NAVY_AND_AIR, ARMY_BATTLE }
-
-data class GameConfig(
-    val mode: GameMode = GameMode.CLASSIC,
-    val turnCap: Int = 12,
-    val turnTimeoutHours: Int = 72,
-    val buildableUnits: Set<UnitType> = UnitType.entries.toSet(),
-    val unitStats: Map<UnitType, UnitStatsOverride> = emptyMap(),
-    val startingForces: Map<String, List<UnitStack>>,
-    val incomeOverrides: Map<String, Int> = emptyMap()
-) {
-    companion object {
-        fun forMode(mode: GameMode): GameConfig
-    }
+```json
+{
+  "side": "axis",
+  "gameRound": 1,
+  "purchases": { "INFANTRY": 2, "TANK": 1 },
+  "warshipPlacement": null,
+  "combatMoves":    [ { "unitType": "TANK", "count": 1, "from": "poland", "to": "ukraine", "via": null, "cargo": [] },
+                      { "unitType": "INFANTRY", "count": 2, "from": "britain", "to": "germany", "via": "north-sea", "cargo": [] } ],
+  "noncombatMoves": [ { "unitType": "INFANTRY", "count": 2, "from": "germany", "to": "poland", "via": null, "cargo": [] } ]
 }
 ```
 
-`forMode` returns the CLASSIC config with `buildableUnits` restricted per §1a: TANKS_AND_SOLDIERS → `{INFANTRY, TANK}`, NAVY_AND_AIR → `{WARSHIP, FIGHTER}`, ARMY_BATTLE → `{INFANTRY}`.
+- `side` and `gameRound` must match the state (`wrongSide`, `wrongRound`).
+- Moves carry no path. The engine works out whether `to` is reachable from `from` under the rules below, so the client never builds paths. The one exception is `via`, the sea zone of a sea crossing (§5.3), which is null for every other move. The staging routine returns it with each legal destination, so the client just copies it.
+- `cargo` applies only to WARSHIP moves: one entry per land unit travelling with the warships.
+- `warshipPlacement` is required when warships are purchased and must be null otherwise.
+- Every section may be empty; an empty turn is legal.
 
-## 6. Engine API (shared module, pure functions, deterministic)
+### 5.2 Staging and validation
 
-```kotlin
-interface QuickWw2Engine {
-    fun initialState(gameId: String, config: GameConfig, map: MapDef): GameState
-    fun validateTurn(state: GameState, submission: TurnSubmission, config: GameConfig, map: MapDef): ValidationResult
-    fun applyTurn(state: GameState, submission: TurnSubmission, seed: Long, config: GameConfig, map: MapDef): TurnResult
-    fun checkVictory(state: GameState, config: GameConfig): VictoryResult?
+Validation and application share one staging routine, exposed as a plain Kotlin function so the client can test a candidate move without JSON. Validation runs it without dice; application runs it with the seeded dice.
+
+- Each combat move is applied to a staging copy in list order and must be legal at its point in the list. Moved units are tracked per (region, type, side); a unit that has moved cannot move again (`unitMovedTwice`). Units that made a combat move cannot make a noncombat move.
+- Validation cannot know battle outcomes, so a noncombat move may neither start from nor end in a region that is a combat destination this turn (`invalidNoncombatDestination`). At apply time every noncombat move is re-checked after battles; a failure rejects the whole submission (`postCombatMoveIllegal`, a guard that should never fire).
+- Any failure rejects the whole submission. The error list is every error found, in §8 order, deduplicated.
+
+### 5.3 Movement
+
+- **Land units.** Up to `move` steps over `adjacentLand`. Every intermediate region must be owned by the mover and free of enemy units (`enemyPassThrough`, `unreachable`). Combat move: `to` is enemy-owned or holds enemy units (`invalidCombatDestination`). Noncombat move: `to` is friendly and holds no enemy units; a territory captured this turn counts as friendly.
+- **Sea crossing** (one move, either phase). A land unit moves from a land region to another land region `to` through one sea zone `via` that is adjacent to both. Combat if `to` is enemy (an amphibious assault), noncombat if friendly. The crossing is the unit's whole move. At the end of the combat moves (for combat crossings) or of the noncombat moves (for noncombat crossings), `via` must hold at least one friendly warship (`noTransportInZone`). Warships may move into `via` earlier in the same turn, so a warship can sail to a zone and ferry troops across in one turn. No port is needed.
+- **Ferry capacity.** Per sea zone per side per turn: land units crossing through it in either phase, plus cargo still aboard there at the end of the turn, ≤ `warshipCapacity × friendly warships in the zone` (`transportOverCapacity`). A warship that ferried units this turn may not have moved away afterwards.
+- **Loading and unloading** (for voyages longer than one zone). Noncombat: a land unit moves from a land region into an adjacent sea zone holding a friendly warship and stays aboard as cargo. A later warship move carries it. Cargo leaves a zone onto an adjacent land region: noncombat if friendly, combat if enemy. Riding along on a warship's move does not count as the cargo's own move.
+- **Warships.** Up to 2 steps over `adjacentSea`; may not pass through a zone holding enemy warships. A combat move may end in any reachable zone, with or without enemy warships, so cargo can be carried into position and landed in the same turn. A noncombat move may not end in a zone with enemy warships. A warship move's `cargo` must be aboard in `from`. Leaving cargo with no warship is illegal.
+- **Fighters.** Combat: any region within `fighterAttackRange` steps over the combined graph (ownership ignored) that holds enemy units or is enemy land (`fighterOutOfRange`). Surviving attacking fighters return to `from` after resolution. Noncombat: relocate to a friendly land region within `fighterRelocateRange` steps (`fighterInvalidDestination`). Fighters never end a turn at sea.
+
+### 5.4 Purchases and placement
+
+- Only `buildableUnits` (`unbuildableUnit`); total cost ≤ treasury (`overspend`); negative counts are `malformedSubmission`.
+- Land and air units bought this turn ≤ `capitalPlacementLimit` (`placementLimitExceeded`). They are placed at the mover's capital. The mover always owns its capital on its own turn, because losing it ends the game.
+- Warships go to `warshipPlacement`: a sea zone adjacent to a port the mover owns (`placementNotPortAdjacent`) that holds no enemy warships after combat (`placementIntoEnemyZone`). Missing when warships were bought → `missingWarshipPlacement`.
+
+## 6. Combat
+
+### 6.1 Who fights
+
+- A **land battle** happens in every land region entered by a combat move. Attackers: every unit moved there this turn, including landed cargo and fighters. Defenders: all enemy units there.
+- A **sea battle** happens in every sea zone where a combat-moving warship meets enemy warships, and in every sea zone attacked by fighters. Only warships and fighters roll; cargo never rolls and is never taken as a casualty.
+- When a side has no warships left in a zone after its sea battle, its cargo there dies, along with every unit crossing through that zone this turn. Any amphibious assault through or from that zone is cancelled (recorded with `cancelled: true` and no rounds). If both sides lose all warships in the same round, both cargos die.
+- Amphibious attackers fight like any other attacker, and there are no retreats.
+- Invariant (fuzz-tested): after resolution no zone holds warships of both sides.
+
+### 6.2 Resolution
+
+- `turnRng = SeededRng(seed)`; for each battle in resolution order, `battleSeed = turnRng.nextUInt()` and the battle uses `SeededRng(battleSeed)`. A cancelled battle uses no seed.
+- Each round, attackers roll one die per unit in `rollOrder` (boosted infantry first), then defenders. Infantry boost = `min(surviving attacking artillery, surviving attacking infantry)`, recomputed every round. Hits are applied after both sides roll; each side removes casualties in `casualtyOrder`; extra hits are wasted. Repeat while both sides have units that roll. No retreats.
+- The attacker takes a land region if any attacking **land** unit survives. Ownership flips and survivors stay. If only fighters survive, nothing flips.
+- Capturing a capital ends the game at once: the winner is set, the remaining phases (noncombat, placement, income) are skipped, and `lastTurn` still records the battles.
+
+## 7. Income, turn pass, turn cap
+
+- Income = sum of owned land regions' income (with `incomeOverrides`), added after placement.
+- Turn pass: Axis → Allies in the same `gameRound`; Allies → Axis with `gameRound + 1`.
+- Turn cap: checked once, after the Allies turn of round `turnCap`. Higher income wins; tie → higher unit value (sum of cost × count, every unit on the board, cargo included); tie → Allies. `winReason = "economicAtTurnCap"`.
+
+## 8. Error codes
+
+Stable strings, in reporting order: `malformedSubmission, gameComplete, wrongSide, wrongRound, unknownUnitType, unknownRegion, unbuildableUnit, overspend, placementLimitExceeded, notEnoughUnits, unreachable, enemyPassThrough, invalidCombatDestination, invalidNoncombatDestination, noTransportInZone, transportOverCapacity, fighterOutOfRange, fighterInvalidDestination, unitMovedTwice, missingWarshipPlacement, placementNotPortAdjacent, placementIntoEnemyZone, postCombatMoveIllegal`. The UI maps each to a sentence.
+
+## 9. Starting forces
+
+Axis: germany 3 INFANTRY, 1 ARTILLERY, 1 TANK, 1 FIGHTER · poland 2 INFANTRY, 1 TANK · france 2 INFANTRY · italy 1 INFANTRY, 1 ARTILLERY · mediterranean 1 WARSHIP
+
+Allies: russia 3 INFANTRY, 1 ARTILLERY, 1 TANK, 1 FIGHTER · ukraine 2 INFANTRY, 1 TANK · britain 2 INFANTRY, 1 FIGHTER · middle-east 2 INFANTRY · north-sea 1 WARSHIP
+
+Initial values; the balance harness tunes them.
+
+## 10. Kotlin shape
+
+### 10.1 Files (`games/quickww2/src/commonMain/kotlin/com/greenopal/quickgames/games/quickww2/`)
+
+- `Ww2Content.kt`: map, unit stats, constants, starting forces, variants.
+- `Ww2Models.kt`: serializable state, submission, move, battle report and config types.
+- `Ww2Rules.kt`: reachability, movement legality, capacity, placement, the staging routine.
+- `Ww2Combat.kt`: `resolveBattle(...)` → `BattleReport`.
+- `Ww2Engine.kt`: `QuickWw2Engine : GameEngine` and `QuickWw2Definition : GameDefinition` (`configVariants` as §2, `turnDeadlineHours = 72`, `engineVersion = 1`).
+
+JSON: kotlinx.serialization with `Json { encodeDefaults = true; ignoreUnknownKeys = true }`.
+
+### 10.2 State
+
+```json
+{
+  "sides": { "axis": "uid-a", "allies": "uid-b" },
+  "gameRound": 1,
+  "activeSide": "axis",
+  "regions": {
+    "germany":   { "owner": "axis", "units": [ { "type": "INFANTRY", "owner": "axis", "count": 3 } ] },
+    "north-sea": { "owner": null,   "units": [ { "type": "WARSHIP", "owner": "allies", "count": 1 } ] }
+  },
+  "treasuries": { "axis": 12, "allies": 12 },
+  "winner": null,
+  "winReason": null,
+  "lastTurn": null
 }
+```
 
-sealed class ValidationResult {
-    object Valid : ValidationResult()
-    data class Invalid(val errors: List<String>) : ValidationResult()
+- `regions` has every region in map order; `units` sorted by owner (axis first) then `rollOrder`, with no zero stacks. A sea zone holds warships and cargo of one side only.
+- `sides` comes from `players` by `playerIndex` (0 = Axis). `initialStateJson` ignores its seed.
+- `activePlayer` = `sides[activeSide]`. `validate` also rejects a `playerId` other than the active one (`wrongSide`).
+- `apply` returns `status = complete` when `winner` is set, with `winnerUid = sides[winner]`.
+
+### 10.3 `lastTurn`
+
+Overwritten by every applied turn; the client shows it to whoever has not seen it.
+
+```json
+{
+  "side": "axis", "gameRound": 1,
+  "purchases": { "INFANTRY": 2 },
+  "battles": [
+    { "regionId": "ukraine", "attacker": "axis", "amphibious": false, "cancelled": false,
+      "attackers": { "TANK": 1, "INFANTRY": 2 }, "defenders": { "INFANTRY": 2, "TANK": 1 },
+      "rounds": [ { "attackerRolls": [2, 5, 6], "defenderRolls": [1, 4, 3], "attackerHits": 1, "defenderHits": 1,
+                    "attackerLosses": { "INFANTRY": 1 }, "defenderLosses": { "INFANTRY": 1 } } ],
+      "attackerLosses": { "INFANTRY": 1 }, "defenderLosses": { "INFANTRY": 2, "TANK": 1 },
+      "conqueror": "axis" }
+  ],
+  "cargoLost": {},
+  "incomeCollected": 13
 }
-
-data class TurnResult(val newState: GameState, val battleLogs: List<BattleLog>)
-
-data class VictoryResult(val winner: Side, val reason: VictoryReason)
-
-enum class VictoryReason { CAPITAL_CAPTURED, ECONOMIC_AT_TURN_CAP, FORFEIT, TIMEOUT }
 ```
 
-Requirements:
-- `applyTurn(state, submission, seed, ...)` must be fully deterministic for a given seed. Same call on client and server yields identical state — clients replay rather than trust a diff.
-- `validateTurn` checks: correct side and round, affordability, purchases restricted to `config.buildableUnits`, legal paths (movement range, domain, no enemy pass-through), transport capacity, fighter range and return legality, placement rules, no unit moved twice.
-- Validation failures reject the entire submission; no partial application.
+Battle seeds are not exposed in state.
 
-## 7. Firebase protocol (alternating turns)
+## 11. Build phases
 
-Firestore layout:
+- **D0 Platform prerequisites** (in `core:engine`, `core:ui` and `server`, not in the Quick WW2 modules).
+  1. Generic variant picker in the lobby: `fun variantName(variant: String): String` on `GameDefinition` (default returns the id). The start screen asks for a variant when any game has more than one; the join list and menu rows show the variant name. Works for every game, not only Quick WW2.
+  2. Nothing else: `lastTurn` replaces a logs read path.
+  Gate: existing games still pass `npm run e2e`; starting Quick WW2 asks for a variant.
+- **D1 Engine** (§10). Tests in `commonTest`:
+  - Map validation passes on the shipped map and fails on corrupted copies (broken symmetry, unknown id, two capitals).
+  - Every movement case in §5.3, positive and negative.
+  - Sea crossings: Britain → Germany via the North Sea in one turn; a warship sails into `via` and ferries troops in the same turn; crossing with no warship rejected; ferry capacity counted across both phases; a ferrying warship cannot sail away afterwards.
+  - Cargo: load, unload and over-capacity; cargo carried two zones then landed. Amphibious assaults cancelled and crossing units lost when the warships are sunk; both cargos die on mutual annihilation.
+  - Artillery boost recomputed each round, casualty order, wasted overkill hits, only-fighters-survive does not capture, fighters return home.
+  - Capital capture ends the turn early; turn cap and both tiebreakers; turn cap not checked after an Axis turn.
+  - Purchases: each variant's buildable set, overspend, placement limit, warship placement rules.
+  - Every error code at least once; `unitMovedTwice` for land and fighters.
+  - A battle's outcome depends only on its own seed.
+  - Determinism: 200 random legal turns applied twice from the same seeds give byte-identical state JSON.
+  - Fuzz: 300 random games asserting after every turn: counts ≥ 0, no zone with both sides' warships, cargo ≤ capacity, treasuries ≥ 0, game ends by the turn cap.
+  Gate: `:games:quickww2:jvmTest` green.
+- **D2 Server and e2e.** Register the definition on the server. Extend `e2e/run.mjs`: host and join a `quickWw2` game; a turn with a real attack produces a battle in `lastTurn` and changes ownership or losses; an unbuildable purchase in a restricted variant is rejected; empty turns to the cap produce the economic winner.
+  Gate: `npm run e2e` green.
+- **D3 Client** (`games/quickww2-ui`), functional rather than pixel art:
+  - Schematic board from the region coordinates: tappable tiles colored by owner, income, unit counts (`3i 1a 1t 1f`), capital star, adjacency lines.
+  - Staging: tap a region, choose unit type and count, legal destinations highlight (from the engine's staging routine), tap one to stage. Combat or noncombat is decided by the destination. Staged moves list with undo.
+  - Buy panel: only buildable units, treasury remaining, placement-limit counter, warship placement zone picker.
+  - Submit sends the whole turn; nothing is sent before.
+  - Turn report from `lastTurn`: each battle's forces, hits per round, losses, result; income collected. Shown for the opponent's turn and the player's own.
+  - End screen: winner and reason.
+  Gate: a full game between two Android phones on the real project, including one amphibious landing and one fighter attack.
+- **D4 Balance check**, two steps:
+  - **Early, right after D1:** a quick bot-vs-bot run (LandRush vs Turtle, both sides, 200 games, classic) to confirm capitals actually fall before the UI is built. Target: under 30% of games reach the turn cap. If not, tune §4 constants and §9 before D3.
+  - **Full, after hand play:** bots LandRush (tanks toward the enemy capital), Turtle (defense and economy), SeaRaider (warships and amphibious strikes on Britain, Germany, Italy, Middle East), Balanced; every ordered pairing, 500 games each, per variant; `jvmTest` gated by `-Pbalance=true`. Bots use only the engine's public functions; their thresholds live in a `BotConfig`, separate from game tuning. Accept (hard for classic, report-only for the others): Axis win rate 45–55%; no bot beats every other from both sides; under 20% of games reach the turn cap. Tune only content values; rule changes go back to Greg. Record each change in §13.
+- **D5 Polish.** Step-by-step dice playback, pixel-art board, drag-to-move, per-error messages, iOS once the CocoaPods blocker is cleared.
 
-```
-games/{gameId}
-  mode, config, mapVersion, players: {axis: uid, allies: uid},
-  state (serialized GameState), status, turnDeadline
-games/{gameId}/turns/{round}-{side}
-  submission (TurnSubmission), submittedAt
-games/{gameId}/battleLogs/{round}-{side}
-  logs: List<BattleLog>
-```
+Deploy as for the other games: `./deploy.sh`, then reinstall the app on each phone. Server and app must be updated together; an older server deletes an open game whose type it does not recognise.
 
-Flow:
-1. Matchmaking (existing platform layer) pairs players who queued for the same mode, creates the game doc with `GameConfig.forMode(mode)`, assigns sides randomly, writes `initialState`.
-2. Active player's client writes a turn submission doc. Firestore rules: only the active player may write, only to the current `{round}-{side}` path, state doc is server-writable only.
-3. Cloud Function trigger validates via the engine; on success generates a seed, applies the turn, writes new state + battle logs + next `turnDeadline`; on failure marks the submission rejected with errors (client surfaces them; illegal submissions should be prevented client-side, server is authoritative).
-4. Opponent's client listens on the game doc; on state change it replays new battle logs, then it's their turn.
-5. Scheduled function forfeits games past `turnDeadline`.
+## 12. Open questions (defaults chosen — proceed unless overridden)
 
-Uses the standard platform submission pipeline (see the platform implementation plan §4): only the active player may submit, and resolution fires immediately. Collection naming follows the platform layout; the `turns`/`battleLogs` names above map to `submissions`/`logs`.
+1. **Last-turn grab at the turn cap.** The cap compares current income after the Allies' final turn, so that turn can be an all-in attack with no reply. Alternative: compare total income collected over the game. Default: current income.
+2. **One-turn amphibious assaults** (§5.3 sea crossing). Because Britain can now hit Germany out of nowhere, Germany needs a garrison, and that cost to Axis is part of balance. Lever if it proves too strong: `warshipCapacity = 1`.
+3. **Side assignment.** Random. Alternative: the host picks Axis or Allies.
+4. **Navy and Air with only two sea zones** may be thin; it stays in the list until the balance check says otherwise.
+5. Shore bombardment excluded. Fighters too strong → reduce `fighterAttackRange` to 1 before changing stats. If Axis wins too often, lower Axis `startingTreasury` before touching forces.
 
-## 8. Starting forces (initial values — Phase 2 tunes these)
+## 13. Balance record
 
-Axis: germany 4 INFANTRY, 1 ARTILLERY, 2 TANK, 1 FIGHTER · western-europe 2 INFANTRY, 1 TANK · southern-europe 2 INFANTRY, 1 ARTILLERY · eastern-europe 3 INFANTRY, 1 TANK · balkans 1 INFANTRY · north-africa 2 INFANTRY, 1 TANK · baltic 1 WARSHIP · mediterranean 1 WARSHIP
-
-Allies: russia 4 INFANTRY, 1 ARTILLERY, 2 TANK, 1 FIGHTER · ukraine 3 INFANTRY, 1 TANK · caucasus 2 INFANTRY · united-kingdom 3 INFANTRY, 1 ARTILLERY, 1 TANK, 1 FIGHTER · middle-east 2 INFANTRY · scandinavia 1 INFANTRY · north-sea 1 WARSHIP · atlantic 1 WARSHIP
-
-Both sides start with treasury 0 and collect at the end of their first turn.
-
-## 9. UI requirements (Compose Multiplatform)
-
-Retro pixel aesthetic consistent with the mini RPG (Dragon Warrior NES style adapted to a strategic map).
-
-Screens:
-1. **Map screen** — board rendered from the map JSON; tap region for unit/income detail panel; drag or tap-tap to stage moves with arrow overlays; badge on regions with staged combat.
-2. **Purchase sheet** — bottom sheet listing units, costs, treasury remaining; staged purchases shown in the placement preview. Only `buildableUnits` are listed (in TANKS_AND_SOLDIERS, the sheet shows just infantry and tanks — no disabled rows for the others).
-3. **Turn review** — summary of purchases, combat moves, noncombat moves, placements; single Submit; nothing is sent until Submit.
-4. **Combat replay** — when a turn resolves (own or opponent's), replay each battle from `BattleLog`: per-round dice results and casualties, skippable, ~2s per combat round.
-5. **End screen** — winner, reason, final map.
-
-Client-side validation mirrors `validateTurn` so illegal moves are unstageable; server remains authoritative.
-
-## 10. Implementation phases & acceptance criteria
-
-### Phase 1 — Engine
-Shared module: models, map asset + loader (with adjacency symmetry validation), full turn pipeline, combat resolver, victory checks.
-
-Accept when:
-- Unit tests cover: every movement legality case, transport load/offload, amphibious cancellation on sea-combat loss, artillery boost recomputation per round, casualty order, capital capture, turn-cap tiebreakers, double-move rejection, overspend rejection.
-- Determinism test: 1,000 random turns applied with fixed seeds produce identical states across two runs.
-- Shared test vectors exported (JSON) for the TypeScript server implementation to consume.
-
-### Phase 2 — Simulation harness & balance
-Bot strategies: LandRush (tanks toward enemy capital), Turtle (defense + economy to turn cap), SeaRaider (warships + amphibious strikes on UK/Scandinavia/North Africa), Balanced. Round-robin, each pairing mirrored (both sides), ≥500 games per pairing. Run the full suite once per game mode (SeaRaider still runs in TANKS_AND_SOLDIERS using starting warships only).
-
-Accept when (per mode):
-- Axis overall win rate across mirrored pairings is 45–55%.
-- No single strategy beats every other strategy from both sides (no dominant strategy).
-- Median game ends by round 12 in <20% of games via turn cap (most games end by capital capture).
-- Tuning happens only via `GameConfig` values and §8 starting forces; rule changes require flagging back to Greg.
-
-### Phase 3 — Firebase integration
-Cloud Function validation/resolution passing the Phase 1 test vectors, Firestore schema + security rules, turn deadline forfeits, wired into the standard platform submission pipeline.
-
-Accept when: two emulator clients play a full scripted game end-to-end; illegal submissions rejected server-side; state identical between server result and client replay; timeout forfeit fires.
-
-### Phase 4 — UI
-All five screens on Android and iOS.
-
-Accept when: a full game is playable between a physical Android device and an iOS simulator (or vice versa); battle replays match server logs; staged-move UI prevents every illegal move class from Phase 1 tests.
-
-### Phase 5 — Polish
-Resign flow, push notification on turn ready (platform layer), reconnection/resume mid-replay, spectator-safe rendering of finished games.
-
-## 11. Open questions (defaults chosen — proceed unless overridden)
-
-1. **Shore bombardment** (warships pre-strike in amphibious assaults): excluded from v1 to keep combat rules minimal. Revisit if SeaRaider underperforms in Phase 2.
-2. **Turn cap 12** and 72h turn timeout: defaults, tune via `GameConfig`.
-3. **Fighter attack range 2 / relocate 3** with auto-return: chosen to eliminate landing-crash rules. If fighters are too strong, reduce attack range to 1 before touching stats.
-4. **Ties at turn cap go to Allies** as second-mover compensation. Replace with a tuned income handicap if Phase 2 shows first-mover advantage >55%.
-5. **Restricted modes keep starting forces unchanged**; only purchases are limited. Known per-mode risks, each with a config-only tuning lever (no rule changes without flagging back to Greg):
-   - TANKS_AND_SOLDIERS: once Axis warships are sunk, UK's 5 income is unreachable → Allied Turtle may dominate at turn cap. Lever: `incomeOverrides["united-kingdom"] = 3`.
-   - NAVY_AND_AIR: territory only flips with a surviving land unit, so once starting armies deplete, capital capture becomes impossible and every game hits the turn cap. Acceptable if games stay decisive on income; if they stall, lever: `turnCap = 8` for this mode.
-   - ARMY_BATTLE: infantry attack 1 vs defense 2 favors defenders → possible stalemates. Lever: `unitStats[INFANTRY] = UnitStatsOverride(attack = 2)` in this mode only.
+| Date | Variant | Change | Axis win rate before → after | Turn-cap % before → after | Dominant bot before → after |
+|---|---|---|---|---|---|
