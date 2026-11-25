@@ -38,6 +38,8 @@ kotlin {
             implementation(project(":games:rps-ui"))
             implementation(project(":games:rpg"))
             implementation(project(":games:rpg-ui"))
+            implementation(project(":games:squad"))
+            implementation(project(":games:squad-ui"))
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.material3)

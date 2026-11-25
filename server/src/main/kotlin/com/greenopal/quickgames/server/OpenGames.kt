@@ -49,6 +49,7 @@ fun startJoinedGame(db: Firestore, notifier: Notifier, openGameId: String) {
         val activePlayerId = def.engine().activePlayer(stateJson, configJson)
 
         val gameRef = db.collection("games").document()
+        val hasViews = writeViews(db, tx, def, gameRef.id, playerRefs.map { it.uid }, stateJson, round = 0)
         tx.delete(openRef)
         tx.create(
             gameRef,
@@ -62,6 +63,7 @@ fun startJoinedGame(db: Firestore, notifier: Notifier, openGameId: String) {
                 "activePlayerId" to activePlayerId,
                 "round" to 0,
                 "stateJson" to publicStateJson,
+                "hasViews" to hasViews,
                 "status" to "active",
                 "winner" to null,
                 "engineVersion" to def.engineVersion,

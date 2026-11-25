@@ -85,6 +85,11 @@ service cloud.firestore {
         allow read, update, delete: if false;
       }
 
+      match /views/{uid} {
+        allow read: if signedIn() && request.auth.uid == uid;
+        allow write: if false;
+      }
+
       match /logs/{logId} {
         allow read: if signedIn() && request.auth.uid in gameData(gameId).playerUids;
         allow write: if false;

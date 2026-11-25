@@ -9,7 +9,8 @@ enum class GameType(val id: String) {
     @SerialName("rps") ROCK_PAPER_SCISSORS("rps"),
     @SerialName("miniRpg") MINI_RPG("miniRpg"),
     @SerialName("riskLite") RISK_LITE("riskLite"),
-    @SerialName("quickWw2") QUICK_WW2("quickWw2");
+    @SerialName("quickWw2") QUICK_WW2("quickWw2"),
+    @SerialName("squad") SQUAD("squad");
 
     companion object {
         fun fromId(id: String): GameType = entries.first { it.id == id }

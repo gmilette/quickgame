@@ -18,6 +18,8 @@ import com.greenopal.quickgames.games.rpg.RpgDefinition
 import com.greenopal.quickgames.games.rpg.RpgUi
 import com.greenopal.quickgames.games.rps.RpsDefinition
 import com.greenopal.quickgames.games.rps.RpsUi
+import com.greenopal.quickgames.games.squad.SquadDefinition
+import com.greenopal.quickgames.games.squad.SquadUi
 import com.greenopal.quickgames.games.tictactoe.TicTacToeDefinition
 import com.greenopal.quickgames.games.tictactoe.TicTacToeUi
 
@@ -28,8 +30,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val registry = GameRegistry(listOf(TicTacToeDefinition, RpsDefinition, RpgDefinition))
-        val uiRegistry = GameUiRegistry(listOf(TicTacToeUi, RpsUi, RpgUi))
+        val registry = GameRegistry(listOf(TicTacToeDefinition, RpsDefinition, RpgDefinition, SquadDefinition))
+        val uiRegistry = GameUiRegistry(listOf(TicTacToeUi, RpsUi, RpgUi, SquadUi))
         val client = (application as QuickGamesApplication).client
         if (savedInstanceState == null) {
             handleNotificationIntent(intent)

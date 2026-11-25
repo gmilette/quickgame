@@ -70,11 +70,13 @@ fun handleSubmission(db: Firestore, notifier: Notifier, gameId: String, subId: S
         when (val resolution = resolveSubmission(game, subId, payloadJson)) {
             is SubmissionResolution.Rejected -> reject(resolution.errors)
             is SubmissionResolution.Applied -> {
-                val publicStateJson = gameRegistry.byId(game.gameType)
-                    ?.publicStateJson(resolution.stateJson)
-                    ?: resolution.stateJson
+                val def = gameRegistry.byId(game.gameType)
+                val publicStateJson = def?.publicStateJson(resolution.stateJson) ?: resolution.stateJson
                 if (secretSnap.exists() || publicStateJson != resolution.stateJson) {
                     tx.set(secretRef, mapOf("stateJson" to resolution.stateJson))
+                }
+                if (def != null) {
+                    writeViews(db, tx, def, gameId, game.playerUids, resolution.stateJson, resolution.round)
                 }
                 tx.update(
                     gameRef,

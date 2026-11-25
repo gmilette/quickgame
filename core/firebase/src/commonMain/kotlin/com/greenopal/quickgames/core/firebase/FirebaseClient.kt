@@ -13,8 +13,12 @@ import dev.gitlive.firebase.firestore.FieldValue
 import dev.gitlive.firebase.firestore.FirebaseFirestore
 import dev.gitlive.firebase.firestore.Timestamp
 import dev.gitlive.firebase.firestore.firestore
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -33,11 +37,19 @@ data class GameDocDto(
     val activePlayerId: String? = null,
     val round: Int = 0,
     val stateJson: String,
+    val hasViews: Boolean = false,
     val status: String,
     val winner: String? = null,
     val engineVersion: Int = 1,
     val turnDeadline: Timestamp? = null,
     val createdAt: Timestamp? = null
+)
+
+/** One player's own view of a game's state, for games that hide information between players. */
+@Serializable
+data class ViewDto(
+    val stateJson: String,
+    val round: Int
 )
 
 @Serializable
@@ -74,12 +86,31 @@ class FirebaseClient(
                     .sortedByDescending { it.createdAtMillis ?: 0L }
             }
 
-    override fun game(gameId: String): Flow<GameDoc?> =
-        firestore.collection("games").document(gameId)
-            .snapshots
-            .map { doc ->
-                if (doc.exists) runCatching { toGameDoc(doc.id, doc.data<GameDocDto>()) }.getOrNull() else null
+    /**
+     * For a game with per-player views, the state shown is this player's own view, and a game is
+     * only emitted once the view has caught up with the game doc's round.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    override fun game(gameId: String): Flow<GameDoc?> {
+        val gameRef = firestore.collection("games").document(gameId)
+        return gameRef.snapshots
+            .map { doc -> if (doc.exists) runCatching { doc.data<GameDocDto>() }.getOrNull() else null }
+            .flatMapLatest { dto ->
+                val uid = auth.currentUser?.uid
+                when {
+                    dto == null -> flowOf(null)
+                    !dto.hasViews || uid == null -> flowOf(runCatching { toGameDoc(gameId, dto) }.getOrNull())
+                    else -> gameRef.collection("views").document(uid).snapshots.mapNotNull { viewDoc ->
+                        val view = if (viewDoc.exists) runCatching { viewDoc.data<ViewDto>() }.getOrNull() else null
+                        if (view == null || view.round != dto.round) {
+                            null
+                        } else {
+                            runCatching { toGameDoc(gameId, dto.copy(stateJson = view.stateJson)) }.getOrNull()
+                        }
+                    }
+                }
             }
+    }
 
     override suspend fun loadDisplayName(uid: String): String? {
         val doc = firestore.collection("users").document(uid).get()

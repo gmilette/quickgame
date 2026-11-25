@@ -37,6 +37,8 @@ include(":games:rps")
 include(":games:rps-ui")
 include(":games:rpg")
 include(":games:rpg-ui")
+include(":games:squad")
+include(":games:squad-ui")
 include(":server")
 include(":app:android")
 if (providers.gradleProperty("quickgames.ios").orNull == "true") {

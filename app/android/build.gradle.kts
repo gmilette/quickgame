@@ -53,6 +53,8 @@ dependencies {
     implementation(project(":games:rps-ui"))
     implementation(project(":games:rpg"))
     implementation(project(":games:rpg-ui"))
+    implementation(project(":games:squad"))
+    implementation(project(":games:squad-ui"))
     implementation(libs.androidx.activity.compose)
     implementation(libs.firebase.messaging)
 }

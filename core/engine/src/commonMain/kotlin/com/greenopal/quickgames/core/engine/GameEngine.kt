@@ -29,9 +29,20 @@ interface GameDefinition {
     val engineVersion: Int
     val turnDeadlineHours: Int
     fun configJson(variant: String): String
+
+    /** How a variant is named in the lobby, for games with more than one. */
+    fun variantLabel(variant: String): String = variant
     fun engine(): GameEngine
     fun initialStateJson(configJson: String, players: List<PlayerRef>, seed: Long): String
     fun publicStateJson(stateJson: String): String = stateJson
+
+    /**
+     * What one player may see of the state, for games with information hidden between players
+     * (fog of war). Null means every player sees [publicStateJson]. When a game returns a view,
+     * the server stores it where only that player can read it, and the client shows it in place
+     * of the public state.
+     */
+    fun playerStateJson(stateJson: String, uid: String): String? = null
 }
 
 class GameRegistry(definitions: List<GameDefinition>) {

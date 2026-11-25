@@ -169,9 +169,9 @@ private fun SignedInApp(
         )
         is Screen.PickGame -> PickGameScreen(
             registry = registry,
-            onPick = { definition ->
+            onPick = { definition, variant ->
                 val hosting = openGames.any { it.hostUid == uid && it.gameType == definition.gameType }
-                screen = Screen.Waiting(definition.gameType, definition.configVariants.first(), alreadyHosted = hosting)
+                screen = Screen.Waiting(definition.gameType, variant, alreadyHosted = hosting)
             },
             onBack = { screen = Screen.Menu }
         )
@@ -223,6 +223,16 @@ private fun startScreen(games: List<GameDoc>, openGames: List<OpenGame>, uid: St
 
 private fun gameName(registry: GameRegistry, gameType: GameType): String =
     registry.all[gameType]?.displayName ?: gameType.id
+
+/** The game's name, plus the variant's for games that have more than one. */
+private fun gameName(registry: GameRegistry, gameType: GameType, variant: String): String {
+    val definition = registry.all[gameType] ?: return gameType.id
+    return if (definition.configVariants.size > 1) {
+        "${definition.displayName}: ${definition.variantLabel(variant)}"
+    } else {
+        definition.displayName
+    }
+}
 
 @Composable
 private fun NameScreen(initial: String, onSave: (String) -> Unit, onCancel: (() -> Unit)?) {
@@ -384,15 +394,18 @@ private fun BackBar(title: String, onBack: () -> Unit, trailing: @Composable () 
 }
 
 @Composable
-private fun PickGameScreen(registry: GameRegistry, onPick: (GameDefinition) -> Unit, onBack: () -> Unit) {
+private fun PickGameScreen(registry: GameRegistry, onPick: (GameDefinition, String) -> Unit, onBack: () -> Unit) {
+    val choices = registry.all.values.flatMap { definition -> definition.configVariants.map { definition to it } }
     Column(Modifier.fillMaxSize()) {
         BackBar("START A GAME", onBack)
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            items(registry.all.values.toList()) { definition ->
-                MenuCard(definition.displayName, "Tap to start and wait for a player") { onPick(definition) }
+            items(choices) { (definition, variant) ->
+                MenuCard(gameName(registry, definition.gameType, variant), "Tap to start and wait for a player") {
+                    onPick(definition, variant)
+                }
             }
         }
     }
@@ -459,7 +472,7 @@ private fun JoinListScreen(
                     item { MenuCard("START A GAME", "Start one and wait for a player", onStart) }
                 }
                 items(joinable) { open ->
-                    ListRow("${gameName(registry, open.gameType)} with ${open.hostName}", "join") {
+                    ListRow("${gameName(registry, open.gameType, open.variant)} with ${open.hostName}", "join") {
                         knownIds = games.map { it.id }.toSet()
                         message = null
                         joining = open

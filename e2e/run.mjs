@@ -98,10 +98,10 @@ async function expectDenied(label, promise) {
   }
 }
 
-async function hostGame(client, uid, gameType) {
+async function hostGame(client, uid, gameType, variant = "standard") {
   await setDoc(doc(client.db, "openGames", `${uid}_${gameType}`), {
     gameType,
-    variant: "standard",
+    variant,
     hostUid: uid,
     hostName: `Host-${uid.slice(0, 4)}`,
     guestUid: null,
@@ -117,8 +117,8 @@ async function joinGame(client, uid, hostUid, gameType) {
   });
 }
 
-async function startGame(host, hostUid, guest, guestUid, gameType, known) {
-  await hostGame(host, hostUid, gameType);
+async function startGame(host, hostUid, guest, guestUid, gameType, known, variant = "standard") {
+  await hostGame(host, hostUid, gameType, variant);
   await joinGame(guest, guestUid, hostUid, gameType);
   return (await waitFor(`${gameType} game created`, () => findGame(host, hostUid, known)));
 }
@@ -436,6 +436,37 @@ async function main() {
   check(rpg.status === "complete" && rpgFinal.finalBattle !== null, "final battle resolved after the last pick");
   check(rpg.winner === rpgFinal.winner && rpg.playerUids.includes(rpg.winner), "rpg winner recorded on the game");
   check(Object.values(rpgFinal.heroes).every((hero) => hero.level >= 3), "both heroes levelled up during the hunt");
+
+  console.log("== squad: fog of war through per-player views");
+  const known8 = new Set([...known7, rpg.id]);
+  const squad = await startGame(a, uidA, b, uidB, "squad", known8, "skirmish");
+  check(squad.hasViews === true, "squad game is flagged as having per-player views");
+  const squadPublic = JSON.parse(squad.stateJson);
+  check(squadPublic.units.length === 0 && squadPublic.events.length === 0, "public squad state has no units or events");
+  const viewDoc = async (client, ownerUid) =>
+    (await getDoc(doc(client.db, `games/${squad.id}/views`, ownerUid))).data();
+  const viewA = await viewDoc(a, uidA);
+  check(viewA && viewA.round === squad.round, "a player can read their own view, at the game's round");
+  const stateA = JSON.parse(viewA.stateJson);
+  check(stateA.viewer === uidA && stateA.units.some((u) => u.owner === uidA), "the view holds the player's own units");
+  await expectDenied("a player cannot read the opponent's view", getDoc(doc(a.db, `games/${squad.id}/views`, uidB)));
+
+  const squadMover = squad.activePlayerId;
+  const moverClient = clients[uids.indexOf(squadMover)];
+  const moverView = JSON.parse((await viewDoc(moverClient, squadMover)).stateJson);
+  const moverUnit = moverView.units.find((u) => u.owner === squadMover);
+  await submitPayload(moverClient, squad.id, squad.round, squadMover, {
+    orders: [{ unit: moverUnit.id, type: "FACE", dir: (moverUnit.facing + 2) % 8 }],
+  });
+  const squadAfter = await waitFor("squad turn applied", async () => {
+    const updated = await readGame(a, squad.id);
+    return updated.round > squad.round ? updated : null;
+  });
+  check(squadAfter.activePlayerId !== squadMover, "the turn passed to the other player");
+  const viewsAfter = await Promise.all([viewDoc(a, uidA), viewDoc(b, uidB)]);
+  check(viewsAfter.every((v) => v.round === squadAfter.round), "both views were rewritten for the new round");
+  const turned = JSON.parse(viewsAfter[uids.indexOf(squadMover)].stateJson).units.find((u) => u.id === moverUnit.id);
+  check(turned.facing === (moverUnit.facing + 2) % 8, "the order was applied to the mover's view");
 
   if (failures > 0) {
     console.error(`\n${failures} check(s) failed`);
